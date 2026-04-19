@@ -1,0 +1,1371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>SLMS — Sports League Management System</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#f1f5f9;color:#1e293b;font-size:14px}
+:root{--brand:#2563eb;--brand-dark:#1d4ed8;--brand-light:#dbeafe;--success:#16a34a;--warning:#d97706;--danger:#dc2626;--gray-50:#f8fafc;--gray-100:#f1f5f9;--gray-200:#e2e8f0;--gray-300:#cbd5e1;--gray-500:#64748b;--gray-700:#334155;--gray-900:#0f172a}
+
+/* ── Layout ── */
+#app{display:flex;min-height:100vh}
+.sidebar{width:240px;background:var(--gray-900);color:#fff;display:flex;flex-direction:column;flex-shrink:0;position:fixed;top:0;left:0;bottom:0;z-index:100}
+.main-content{margin-left:240px;flex:1;display:flex;flex-direction:column;min-height:100vh}
+.topbar{background:#fff;border-bottom:1px solid var(--gray-200);padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
+.page{padding:28px 32px;flex:1}
+
+/* ── Sidebar ── */
+.sidebar-logo{padding:20px 16px;border-bottom:1px solid rgba(255,255,255,.1);display:flex;align-items:center;gap:10px}
+.sidebar-logo .icon{width:36px;height:36px;background:var(--brand);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.sidebar-logo h1{font-size:15px;font-weight:700;line-height:1.2}
+.sidebar-logo p{font-size:11px;color:#94a3b8;margin-top:2px}
+.nav{padding:12px 8px;flex:1;overflow-y:auto}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;color:#94a3b8;transition:all .15s;margin-bottom:2px;border:none;background:none;width:100%;text-align:left}
+.nav-item:hover{background:rgba(255,255,255,.08);color:#fff}
+.nav-item.active{background:var(--brand);color:#fff}
+.nav-item .nav-icon{font-size:16px;width:20px;text-align:center;flex-shrink:0}
+.sidebar-user{padding:12px 8px;border-top:1px solid rgba(255,255,255,.1)}
+.user-info{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px}
+.user-avatar{width:34px;height:34px;border-radius:50%;background:var(--brand);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+.user-name{font-size:13px;font-weight:600;color:#fff}
+.user-role{font-size:11px;color:#94a3b8;text-transform:capitalize}
+.btn-logout{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;color:#94a3b8;font-size:13px;cursor:pointer;border:none;background:none;width:100%;transition:all .15s;margin-top:4px}
+.btn-logout:hover{background:rgba(255,255,255,.08);color:#fff}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;text-decoration:none}
+.btn-primary{background:var(--brand);color:#fff}.btn-primary:hover{background:var(--brand-dark)}
+.btn-secondary{background:#fff;color:var(--gray-700);border:1px solid var(--gray-200)}.btn-secondary:hover{background:var(--gray-50)}
+.btn-danger{background:var(--danger);color:#fff}.btn-danger:hover{background:#b91c1c}
+.btn-success{background:var(--success);color:#fff}.btn-success:hover{background:#15803d}
+.btn-sm{padding:5px 10px;font-size:12px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* ── Cards ── */
+.card{background:#fff;border-radius:12px;border:1px solid var(--gray-200);padding:24px}
+.card-sm{background:#fff;border-radius:10px;border:1px solid var(--gray-200);padding:16px}
+
+/* ── Stats grid ── */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px;margin-bottom:28px}
+.stat-card{background:#fff;border-radius:12px;border:1px solid var(--gray-200);padding:20px;display:flex;align-items:center;gap:14px}
+.stat-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
+.stat-val{font-size:26px;font-weight:700;color:var(--gray-900)}
+.stat-lbl{font-size:12px;color:var(--gray-500);margin-top:2px}
+
+/* ── Tables ── */
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:10px 14px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--gray-500);border-bottom:1px solid var(--gray-200)}
+td{padding:12px 14px;border-bottom:1px solid var(--gray-100);color:var(--gray-700)}
+tr:hover td{background:var(--gray-50)}
+tr:last-child td{border-bottom:none}
+.clickable{cursor:pointer}
+
+/* ── Badges ── */
+.badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:600}
+.badge-blue{background:#dbeafe;color:#1d4ed8}
+.badge-green{background:#dcfce7;color:#15803d}
+.badge-yellow{background:#fef9c3;color:#a16207}
+.badge-red{background:#fee2e2;color:#b91c1c}
+.badge-gray{background:var(--gray-100);color:var(--gray-700)}
+.badge-purple{background:#f3e8ff;color:#7c3aed}
+
+/* ── Forms ── */
+.form-group{margin-bottom:16px}
+.form-label{display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:5px}
+.form-control{width:100%;padding:8px 12px;border:1px solid var(--gray-200);border-radius:8px;font-size:13px;color:var(--gray-900);outline:none;transition:border .15s;background:#fff}
+.form-control:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+select.form-control{cursor:pointer}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.form-error{font-size:12px;color:var(--danger);margin-top:4px}
+
+/* ── Modal ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal{background:#fff;border-radius:16px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:0 25px 60px rgba(0,0,0,.15)}
+.modal-header{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid var(--gray-200)}
+.modal-title{font-size:16px;font-weight:700;color:var(--gray-900)}
+.modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--gray-500);line-height:1;padding:0 4px}
+.modal-body{padding:20px 24px}
+.modal-footer{padding:16px 24px;border-top:1px solid var(--gray-200);display:flex;justify-content:flex-end;gap:10px}
+
+/* ── Page header ── */
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+.page-title{font-size:22px;font-weight:700;color:var(--gray-900)}
+.page-sub{font-size:13px;color:var(--gray-500);margin-top:3px}
+
+/* ── Search bar ── */
+.search-bar{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.search-input{flex:1;max-width:320px;padding:8px 12px 8px 36px;border:1px solid var(--gray-200);border-radius:8px;font-size:13px;outline:none;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") no-repeat 10px center}
+.search-input:focus{border-color:var(--brand)}
+
+/* ── Auth page ── */
+.auth-page{min-height:100vh;background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%);display:flex;align-items:center;justify-content:center;padding:16px}
+.auth-card{background:#fff;border-radius:20px;padding:40px;width:100%;max-width:420px;box-shadow:0 25px 60px rgba(0,0,0,.25)}
+.auth-logo{display:flex;flex-direction:column;align-items:center;margin-bottom:32px}
+.auth-logo .icon{width:64px;height:64px;background:var(--brand);border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:32px;margin-bottom:12px}
+.auth-logo h1{font-size:24px;font-weight:800;color:var(--gray-900)}
+.auth-logo p{font-size:13px;color:var(--gray-500);margin-top:4px}
+.auth-switch{text-align:center;margin-top:20px;font-size:13px;color:var(--gray-500)}
+.auth-switch a{color:var(--brand);font-weight:600;cursor:pointer;text-decoration:none}
+
+/* ── Alerts ── */
+.alert{padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px}
+.alert-error{background:#fee2e2;color:#b91c1c;border:1px solid #fecaca}
+.alert-success{background:#dcfce7;color:#15803d;border:1px solid #bbf7d0}
+.alert-info{background:#dbeafe;color:#1d4ed8;border:1px solid #bfdbfe}
+
+/* ── Score display ── */
+.score-board{display:flex;align-items:center;justify-content:center;gap:24px;padding:24px;background:var(--gray-900);border-radius:12px;color:#fff;margin-bottom:20px}
+.score-team{text-align:center;flex:1}
+.score-team-name{font-size:14px;font-weight:600;color:#94a3b8;margin-bottom:8px}
+.score-num{font-size:52px;font-weight:800;line-height:1}
+.score-vs{font-size:18px;font-weight:700;color:#475569;padding:0 8px}
+
+/* ── Sport icons map ── */
+.sport-icon{font-size:24px}
+
+/* ── Empty state ── */
+.empty-state{text-align:center;padding:60px 20px}
+.empty-state .icon{font-size:48px;margin-bottom:12px}
+.empty-state h3{font-size:16px;font-weight:600;color:var(--gray-700);margin-bottom:6px}
+.empty-state p{font-size:13px;color:var(--gray-500);margin-bottom:20px}
+
+/* ── Tabs ── */
+.tabs{display:flex;gap:4px;background:var(--gray-100);padding:4px;border-radius:10px;margin-bottom:24px;width:fit-content}
+.tab{padding:7px 16px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;border:none;background:none;color:var(--gray-500);transition:all .15s}
+.tab.active{background:#fff;color:var(--brand);box-shadow:0 1px 3px rgba(0,0,0,.1)}
+
+/* ── Spinner ── */
+.spinner{display:inline-block;width:20px;height:20px;border:2px solid var(--gray-200);border-top-color:var(--brand);border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-page{display:flex;align-items:center;justify-content:center;height:200px}
+
+/* ── Color dots ── */
+.color-dot{width:14px;height:14px;border-radius:50%;display:inline-block;border:1px solid var(--gray-200)}
+
+/* ── Responsive ── */
+@media(max-width:768px){
+  .sidebar{transform:translateX(-100%);transition:transform .25s}
+  .sidebar.open{transform:translateX(0)}
+  .main-content{margin-left:0}
+  .page{padding:16px}
+  .form-row{grid-template-columns:1fr}
+  .stats-grid{grid-template-columns:1fr 1fr}
+  .score-num{font-size:36px}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+//  SLMS — Single-Page Application (Vanilla JS, no build step)
+// ═══════════════════════════════════════════════════════════════════
+
+// ─── State ───────────────────────────────────────────────────────
+const State = {
+  user: JSON.parse(localStorage.getItem('slms_user') || 'null'),
+  token: localStorage.getItem('slms_token') || null,
+  currentPage: 'dashboard',
+  data: {},
+  modals: {},
+};
+
+// ─── API ─────────────────────────────────────────────────────────
+const API = {
+  base: '/api',
+  async req(method, path, body, params) {
+    const url = new URL(this.base + path, location.origin);
+    if (params) Object.entries(params).forEach(([k,v]) => v != null && url.searchParams.set(k, v));
+    const opts = {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+    };
+    if (State.token) opts.headers['Authorization'] = 'Bearer ' + State.token;
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(url, opts);
+    if (res.status === 401) { logout(); return; }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Request failed');
+    }
+    if (res.status === 204) return null;
+    return res.json();
+  },
+  get:    (p, params) => API.req('GET',    p, null, params),
+  post:   (p, body)   => API.req('POST',   p, body),
+  patch:  (p, body)   => API.req('PATCH',  p, body),
+  delete: (p)         => API.req('DELETE', p),
+};
+
+// ─── Router ──────────────────────────────────────────────────────
+function navigate(page, params = {}) {
+  State.currentPage = page;
+  State.pageParams  = params;
+  render();
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────
+function logout() {
+  localStorage.removeItem('slms_token');
+  localStorage.removeItem('slms_user');
+  State.user = null; State.token = null;
+  render();
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────
+function el(tag, cls, html = '') {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html) e.innerHTML = html;
+  return e;
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+}
+
+function fmtDateTime(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+
+function badge(status) {
+  const map = {
+    scheduled:'blue', in_progress:'yellow', completed:'green',
+    cancelled:'red', postponed:'gray', draft:'gray',
+    registration:'blue', active:'green', inactive:'gray', suspended:'red',
+  };
+  const c = map[status] || 'gray';
+  return `<span class="badge badge-${c}">${(status||'').replace(/_/g,' ')}</span>`;
+}
+
+function sportIcon(name) {
+  const icons = {
+    'Football':'⚽','Cricket':'🏏','Basketball':'🏀','Volleyball':'🏐',
+    'Tennis':'🎾','Badminton':'🏸','Table Tennis':'🏓','Pickleball':'🏓',
+    'Snooker':'🎱','Billiards':'🎱','Darts':'🎯','Archery':'🏹',
+    'Chess':'♟️','Carrom':'🎯','Swimming':'🏊','Rowing':'🚣',
+    'Foosball':'⚽','Tug of War':'💪',
+  };
+  return icons[name] || '🏅';
+}
+
+function initials(u) {
+  if (!u) return '?';
+  return ((u.first_name||'')[0]||'') + ((u.last_name||'')[0]||'');
+}
+
+function showAlert(msg, type = 'error') {
+  const a = document.getElementById('global-alert');
+  if (!a) return;
+  a.className = `alert alert-${type}`;
+  a.textContent = msg;
+  a.style.display = 'block';
+  setTimeout(() => { a.style.display = 'none'; }, 4000);
+}
+
+// ─── Modal system ─────────────────────────────────────────────────
+function openModal(id) {
+  const m = document.getElementById(id);
+  if (m) m.style.display = 'flex';
+}
+function closeModal(id) {
+  const m = document.getElementById(id);
+  if (m) m.style.display = 'none';
+  // reset form inside
+  const f = m && m.querySelector('form');
+  if (f) f.reset();
+}
+function modalHTML(id, title, bodyHTML, footerHTML = '') {
+  return `
+  <div class="modal-overlay" id="${id}" style="display:none" onclick="if(event.target.id==='${id}')closeModal('${id}')">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">${title}</span>
+        <button class="modal-close" onclick="closeModal('${id}')">&times;</button>
+      </div>
+      <div class="modal-body">${bodyHTML}</div>
+      ${footerHTML ? `<div class="modal-footer">${footerHTML}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  PAGES
+// ═══════════════════════════════════════════════════════════════════
+
+// ─── Login Page ───────────────────────────────────────────────────
+function renderLogin() {
+  return `
+  <div class="auth-page">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <div class="icon">🏆</div>
+        <h1>SLMS</h1>
+        <p>Sports League Management System</p>
+      </div>
+      <div id="login-alert"></div>
+      <form id="login-form">
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input class="form-control" type="email" id="l-email" placeholder="you@club.com" required/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input class="form-control" type="password" id="l-pass" placeholder="••••••••" required/>
+        </div>
+        <button class="btn btn-primary" type="submit" style="width:100%;justify-content:center;padding:11px" id="l-btn">
+          Sign in
+        </button>
+      </form>
+      <div class="auth-switch">Don't have an account? <a onclick="navigate('register')">Register</a></div>
+    </div>
+  </div>`;
+}
+
+function bindLogin() {
+  document.getElementById('login-form')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = document.getElementById('l-btn');
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    const alert = document.getElementById('login-alert');
+    try {
+      const data = await API.post('/auth/login', {
+        email: document.getElementById('l-email').value,
+        password: document.getElementById('l-pass').value,
+      });
+      localStorage.setItem('slms_token', data.access_token);
+      localStorage.setItem('slms_user', JSON.stringify(data.user));
+      State.token = data.access_token;
+      State.user  = data.user;
+      navigate('dashboard');
+    } catch (err) {
+      alert.className = 'alert alert-error';
+      alert.textContent = err.message;
+      alert.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Sign in';
+    }
+  });
+}
+
+// ─── Register Page ────────────────────────────────────────────────
+function renderRegister() {
+  return `
+  <div class="auth-page">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <div class="icon">🏆</div>
+        <h1>Create Account</h1>
+        <p>Join Sports League Management System</p>
+      </div>
+      <div id="reg-alert"></div>
+      <form id="reg-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">First Name</label>
+            <input class="form-control" id="r-fn" placeholder="John" required/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Last Name</label>
+            <input class="form-control" id="r-ln" placeholder="Doe" required/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input class="form-control" type="email" id="r-email" placeholder="you@club.com" required/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Phone</label>
+          <input class="form-control" id="r-phone" placeholder="+91 98765 43210"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input class="form-control" type="password" id="r-pass" placeholder="Min 8 characters" required/>
+        </div>
+        <button class="btn btn-primary" type="submit" style="width:100%;justify-content:center;padding:11px" id="r-btn">
+          Create Account
+        </button>
+      </form>
+      <div class="auth-switch">Already have an account? <a onclick="navigate('login')">Sign in</a></div>
+    </div>
+  </div>`;
+}
+
+function bindRegister() {
+  document.getElementById('reg-form')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = document.getElementById('r-btn');
+    btn.disabled = true; btn.textContent = 'Creating…';
+    const alert = document.getElementById('reg-alert');
+    try {
+      await API.post('/auth/register', {
+        first_name: document.getElementById('r-fn').value,
+        last_name:  document.getElementById('r-ln').value,
+        email:      document.getElementById('r-email').value,
+        phone:      document.getElementById('r-phone').value || null,
+        password:   document.getElementById('r-pass').value,
+      });
+      alert.className = 'alert alert-success';
+      alert.textContent = 'Account created! Please sign in.';
+      alert.style.display = 'block';
+      setTimeout(() => navigate('login'), 1500);
+    } catch (err) {
+      alert.className = 'alert alert-error';
+      alert.textContent = err.message;
+      alert.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Create Account';
+    }
+  });
+}
+
+// ─── Dashboard ────────────────────────────────────────────────────
+async function renderDashboard() {
+  let stats = {}, matches = [], tournaments = [];
+  try {
+    [stats, matches, tournaments] = await Promise.all([
+      API.get('/dashboard/stats'),
+      API.get('/dashboard/recent-matches'),
+      API.get('/dashboard/recent-tournaments'),
+    ]);
+  } catch(e) {}
+
+  const statCards = [
+    { label:'Clubs',            val: stats.clubs,              icon:'🏢', color:'#dbeafe' },
+    { label:'Players',          val: stats.players,            icon:'👤', color:'#dcfce7' },
+    { label:'Teams',            val: stats.teams,              icon:'🛡️', color:'#f3e8ff' },
+    { label:'Sports',           val: stats.sports,             icon:'🏅', color:'#fef9c3' },
+    { label:'Total Matches',    val: stats.matches_total,      icon:'⚔️', color:'#ffe4e6' },
+    { label:'Live Now',         val: stats.matches_live,       icon:'🔴', color:'#fee2e2' },
+    { label:'Active Tournaments',val:stats.tournaments_active, icon:'🏆', color:'#fef3c7' },
+  ];
+
+  const matchRows = matches.length ? matches.map(m => `
+    <tr class="clickable" onclick="navigate('match-detail',{id:${m.id}})">
+      <td><strong>${m.team_a||'—'}</strong> vs <strong>${m.team_b||'—'}</strong></td>
+      <td>${m.sport||'—'}</td>
+      <td>${m.score_a != null ? JSON.stringify(m.score_a) : '—'} : ${m.score_b != null ? JSON.stringify(m.score_b) : '—'}</td>
+      <td>${badge(m.status)}</td>
+      <td>${fmtDateTime(m.scheduled_at)}</td>
+    </tr>`).join('') : '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:24px">No matches yet</td></tr>';
+
+  const tRows = tournaments.length ? tournaments.map(t => `
+    <tr class="clickable" onclick="navigate('tournament-detail',{id:${t.id}})">
+      <td><strong>${t.name}</strong></td>
+      <td>${t.sport||'—'}</td>
+      <td>${badge(t.status)}</td>
+      <td>${fmtDate(t.start_date)}</td>
+    </tr>`).join('') : '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:24px">No tournaments yet</td></tr>';
+
+  return `
+  <div class="page-header">
+    <div>
+      <div class="page-title">Dashboard</div>
+      <div class="page-sub">Welcome back, ${State.user?.first_name}! Here's what's happening.</div>
+    </div>
+  </div>
+  <div class="stats-grid">
+    ${statCards.map(s => `
+    <div class="stat-card">
+      <div class="stat-icon" style="background:${s.color}">${s.icon}</div>
+      <div><div class="stat-val">${s.val ?? '—'}</div><div class="stat-lbl">${s.label}</div></div>
+    </div>`).join('')}
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="padding:18px 20px;border-bottom:1px solid var(--gray-100);font-weight:700">⚔️ Recent Matches</div>
+      <div class="table-wrap">
+        <table><thead><tr><th>Match</th><th>Sport</th><th>Score</th><th>Status</th><th>Date</th></tr></thead>
+        <tbody>${matchRows}</tbody></table>
+      </div>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="padding:18px 20px;border-bottom:1px solid var(--gray-100);font-weight:700">🏆 Recent Tournaments</div>
+      <div class="table-wrap">
+        <table><thead><tr><th>Name</th><th>Sport</th><th>Status</th><th>Start</th></tr></thead>
+        <tbody>${tRows}</tbody></table>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ─── Players Page ─────────────────────────────────────────────────
+async function renderPlayers() {
+  const search = State.pageParams?.search || '';
+  let players = [];
+  try { players = await API.get('/players', { search: search || undefined, limit: 100 }); } catch(e) {}
+
+  const rows = players.map(p => `
+    <tr class="clickable" onclick="navigate('player-detail',{id:${p.id}})">
+      <td>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="user-avatar" style="width:32px;height:32px;font-size:11px">${initials(p)}</div>
+          <div><div style="font-weight:600">${p.full_name}</div>
+          <div style="font-size:11px;color:var(--gray-500)">${p.global_player_id||''}</div></div>
+        </div>
+      </td>
+      <td>${p.email}</td>
+      <td>${badge(p.role?.replace('_',' '))}</td>
+      <td>${badge(p.is_active ? 'active' : 'inactive')}</td>
+      <td>${fmtDate(p.created_at)}</td>
+    </tr>`).join('') || '<tr><td colspan="5" class="empty-state"><div class="icon">👤</div><div>No players found</div></td></tr>';
+
+  return `
+  <div class="page-header">
+    <div><div class="page-title">Players</div><div class="page-sub">${players.length} registered players</div></div>
+    <button class="btn btn-primary" onclick="openModal('add-player-modal')">+ Add Player</button>
+  </div>
+  <div class="search-bar">
+    <input class="search-input" id="player-search" placeholder="Search by name, email or ID…" value="${search}"
+      oninput="debounce(()=>navigate('players',{search:this.value}),400)()"/>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+      <table><thead><tr><th>Player</th><th>Email</th><th>Role</th><th>Status</th><th>Joined</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    </div>
+  </div>
+  ${modalHTML('add-player-modal','Add Player',`
+    <form id="add-player-form">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">First Name</label><input class="form-control" id="ap-fn" required/></div>
+        <div class="form-group"><label class="form-label">Last Name</label><input class="form-control" id="ap-ln" required/></div>
+      </div>
+      <div class="form-group"><label class="form-label">Email</label><input class="form-control" type="email" id="ap-email" required/></div>
+      <div class="form-group"><label class="form-label">Phone</label><input class="form-control" id="ap-phone"/></div>
+      <div class="form-group"><label class="form-label">Password</label><input class="form-control" type="password" id="ap-pass" required/></div>
+      <div class="form-group"><label class="form-label">Role</label>
+        <select class="form-control" id="ap-role">
+          <option value="viewer">Viewer</option>
+          <option value="player">Player</option>
+          <option value="official">Official</option>
+          <option value="club_manager">Club Manager</option>
+          <option value="club_admin">Club Admin</option>
+          <option value="super_admin">Super Admin</option>
+        </select>
+      </div>
+    </form>`,
+    `<button class="btn btn-secondary" onclick="closeModal('add-player-modal')">Cancel</button>
+     <button class="btn btn-primary" onclick="submitAddPlayer()">Add Player</button>`
+  )}`;
+}
+
+async function submitAddPlayer() {
+  try {
+    await API.post('/auth/register', {
+      first_name: document.getElementById('ap-fn').value,
+      last_name:  document.getElementById('ap-ln').value,
+      email:      document.getElementById('ap-email').value,
+      phone:      document.getElementById('ap-phone').value || null,
+      password:   document.getElementById('ap-pass').value,
+      role:       document.getElementById('ap-role').value,
+    });
+    closeModal('add-player-modal');
+    showAlert('Player added successfully!', 'success');
+    navigate('players');
+  } catch(e) { showAlert(e.message); }
+}
+
+// ─── Player Detail ────────────────────────────────────────────────
+async function renderPlayerDetail() {
+  const id = State.pageParams?.id;
+  let player = {}, clubs = [];
+  try {
+    [player, clubs] = await Promise.all([API.get(`/players/${id}`), API.get(`/players/${id}/clubs`)]);
+  } catch(e) {}
+
+  return `
+  <div style="margin-bottom:16px">
+    <button class="btn btn-secondary btn-sm" onclick="navigate('players')">← Back to Players</button>
+  </div>
+  <div style="display:grid;grid-template-columns:300px 1fr;gap:20px">
+    <div>
+      <div class="card" style="text-align:center">
+        <div class="user-avatar" style="width:80px;height:80px;font-size:28px;margin:0 auto 16px">${initials(player)}</div>
+        <div style="font-size:18px;font-weight:700">${player.full_name||'—'}</div>
+        <div style="font-size:12px;color:var(--gray-500);margin:4px 0 12px">${player.global_player_id||''}</div>
+        ${badge(player.role)} ${badge(player.is_active?'active':'inactive')}
+        <div style="margin-top:20px;text-align:left;space-y:8px">
+          <div style="margin-bottom:8px"><span style="font-size:11px;font-weight:600;color:var(--gray-500)">EMAIL</span><div style="font-size:13px">${player.email||'—'}</div></div>
+          <div style="margin-bottom:8px"><span style="font-size:11px;font-weight:600;color:var(--gray-500)">GENDER</span><div style="font-size:13px">${player.gender||'—'}</div></div>
+          <div><span style="font-size:11px;font-weight:600;color:var(--gray-500)">JOINED</span><div style="font-size:13px">${fmtDate(player.created_at)}</div></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <div style="font-weight:700;font-size:15px;margin-bottom:16px">🏢 Club Memberships</div>
+        ${clubs.length ? `<table><thead><tr><th>Club</th><th>Jersey #</th><th>Position</th><th>Status</th><th>Joined</th></tr></thead><tbody>
+          ${clubs.map(c=>`<tr><td><strong>${c.club_name||'—'}</strong></td><td>${c.jersey_no||'—'}</td><td>${c.position||'—'}</td><td>${badge(c.status)}</td><td>${fmtDate(c.joined_at)}</td></tr>`).join('')}
+        </tbody></table>` : '<div class="empty-state"><div class="icon">🏢</div><p>Not a member of any club yet</p></div>'}
+      </div>
+    </div>
+  </div>`;
+}
+
+// ─── Teams Page ───────────────────────────────────────────────────
+async function renderTeams() {
+  let teams = [], sports = [];
+  try { [teams, sports] = await Promise.all([API.get('/teams'), API.get('/sports')]); } catch(e) {}
+
+  const sportMap = Object.fromEntries(sports.map(s => [s.id, s]));
+  const rows = teams.map(t => `
+    <tr class="clickable" onclick="navigate('team-detail',{id:${t.id}})">
+      <td><div style="display:flex;align-items:center;gap:8px"><span style="font-size:20px">${sportIcon(sportMap[t.sport_id]?.name)}</span><strong>${t.name}</strong></div></td>
+      <td>${sportMap[t.sport_id]?.name||'—'}</td>
+      <td>${t.age_group||'—'}</td>
+      <td>${t.division||'—'}</td>
+      <td>${badge(t.is_active?'active':'inactive')}</td>
+    </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;padding:32px;color:#94a3b8">No teams yet</td></tr>';
+
+  const sportOptions = sports.map(s => `<option value="${s.id}">${sportIcon(s.name)} ${s.name}</option>`).join('');
+
+  return `
+  <div class="page-header">
+    <div><div class="page-title">Teams</div><div class="page-sub">${teams.length} teams registered</div></div>
+    <button class="btn btn-primary" onclick="openModal('add-team-modal')">+ New Team</button>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+      <table><thead><tr><th>Team</th><th>Sport</th><th>Age Group</th><th>Division</th><th>Status</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    </div>
+  </div>
+  ${modalHTML('add-team-modal','Create Team',`
+    <form id="add-team-form">
+      <div class="form-group"><label class="form-label">Team Name</label><input class="form-control" id="at-name" required/></div>
+      <div class="form-group"><label class="form-label">Sport</label>
+        <select class="form-control" id="at-sport">${sportOptions}</select>
+      </div>
+      <div class="form-group"><label class="form-label">Club ID</label><input class="form-control" type="number" id="at-club" placeholder="Club ID"/></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Age Group</label>
+          <select class="form-control" id="at-age">
+            <option value="">Open</option>
+            <option value="U10">U10</option><option value="U12">U12</option>
+            <option value="U14">U14</option><option value="U16">U16</option>
+            <option value="U18">U18</option><option value="U21">U21</option>
+            <option value="Senior">Senior</option><option value="Veterans">Veterans</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Division</label><input class="form-control" id="at-div" placeholder="e.g. Division A"/></div>
+      </div>
+    </form>`,
+    `<button class="btn btn-secondary" onclick="closeModal('add-team-modal')">Cancel</button>
+     <button class="btn btn-primary" onclick="submitAddTeam()">Create Team</button>`
+  )}`;
+}
+
+async function submitAddTeam() {
+  try {
+    await API.post('/teams', {
+      name:      document.getElementById('at-name').value,
+      sport_id:  parseInt(document.getElementById('at-sport').value),
+      club_id:   parseInt(document.getElementById('at-club').value) || 1,
+      age_group: document.getElementById('at-age').value || null,
+      division:  document.getElementById('at-div').value || null,
+    });
+    closeModal('add-team-modal');
+    showAlert('Team created!', 'success');
+    navigate('teams');
+  } catch(e) { showAlert(e.message); }
+}
+
+// ─── Team Detail ──────────────────────────────────────────────────
+async function renderTeamDetail() {
+  const id = State.pageParams?.id;
+  let team = {}, members = [], players = [], sports = [];
+  try {
+    [team, members, players, sports] = await Promise.all([
+      API.get(`/teams/${id}`),
+      API.get(`/teams/${id}/members`),
+      API.get('/players', { limit: 200 }),
+      API.get('/sports'),
+    ]);
+  } catch(e) {}
+
+  const sport = sports.find(s => s.id === team.sport_id);
+  const playerOptions = players.map(p => `<option value="${p.id}">${p.full_name} — ${p.email}</option>`).join('');
+
+  return `
+  <div style="margin-bottom:16px">
+    <button class="btn btn-secondary btn-sm" onclick="navigate('teams')">← Back to Teams</button>
+  </div>
+  <div class="page-header">
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="font-size:36px">${sportIcon(sport?.name)}</span>
+      <div><div class="page-title">${team.name||'—'}</div>
+      <div class="page-sub">${sport?.name||'—'} · ${team.age_group||'Open'} · ${team.division||'No Division'}</div></div>
+    </div>
+    <button class="btn btn-primary" onclick="openModal('add-member-modal')">+ Add Player</button>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--gray-100);font-weight:700">👥 Roster (${members.length})</div>
+    <div class="table-wrap">
+      <table><thead><tr><th>Player</th><th>Jersey #</th><th>Position</th><th>Joined</th><th>Action</th></tr></thead>
+      <tbody>${members.length ? members.map(m=>`
+        <tr>
+          <td><strong>${m.player_name||'—'}</strong></td>
+          <td>${m.jersey_no||'—'}</td>
+          <td>${m.position||'—'}</td>
+          <td>${fmtDate(m.joined_at)}</td>
+          <td><button class="btn btn-danger btn-sm" onclick="removeMember(${id},${m.player_id})">Remove</button></td>
+        </tr>`).join('') : '<tr><td colspan="5" style="text-align:center;padding:24px;color:#94a3b8">No players in roster</td></tr>'}
+      </tbody></table>
+    </div>
+  </div>
+  ${modalHTML('add-member-modal','Add Player to Team',`
+    <form id="add-member-form">
+      <div class="form-group"><label class="form-label">Select Player</label>
+        <select class="form-control" id="am-player"><option value="">Choose player…</option>${playerOptions}</select>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Jersey Number</label><input class="form-control" id="am-jersey" placeholder="e.g. 10"/></div>
+        <div class="form-group"><label class="form-label">Position</label><input class="form-control" id="am-pos" placeholder="e.g. Forward"/></div>
+      </div>
+    </form>`,
+    `<button class="btn btn-secondary" onclick="closeModal('add-member-modal')">Cancel</button>
+     <button class="btn btn-primary" onclick="submitAddMember(${id})">Add to Roster</button>`
+  )}`;
+}
+
+async function submitAddMember(teamId) {
+  const pid = document.getElementById('am-player').value;
+  if (!pid) { showAlert('Please select a player'); return; }
+  try {
+    await API.post(`/teams/${teamId}/members`, {
+      player_id: parseInt(pid),
+      jersey_no: document.getElementById('am-jersey').value || null,
+      position:  document.getElementById('am-pos').value || null,
+    });
+    closeModal('add-member-modal');
+    showAlert('Player added to roster!', 'success');
+    navigate('team-detail', { id: teamId });
+  } catch(e) { showAlert(e.message); }
+}
+
+async function removeMember(teamId, playerId) {
+  if (!confirm('Remove this player from the team?')) return;
+  try {
+    await API.delete(`/teams/${teamId}/members/${playerId}`);
+    showAlert('Player removed', 'success');
+    navigate('team-detail', { id: teamId });
+  } catch(e) { showAlert(e.message); }
+}
+
+// ─── Matches Page ─────────────────────────────────────────────────
+async function renderMatches() {
+  const statusFilter = State.pageParams?.status || '';
+  let matches = [], teams = [], sports = [];
+  try {
+    [matches, teams, sports] = await Promise.all([
+      API.get('/matches', { status: statusFilter || undefined, limit: 100 }),
+      API.get('/teams'),
+      API.get('/sports'),
+    ]);
+  } catch(e) {}
+
+  const teamMap  = Object.fromEntries(teams.map(t => [t.id, t]));
+  const sportMap = Object.fromEntries(sports.map(s => [s.id, s]));
+
+  const rows = matches.map(m => {
+    const ta = teamMap[m.team_a_id], tb = teamMap[m.team_b_id];
+    const sa = m.score_a != null ? (typeof m.score_a === 'object' ? JSON.stringify(m.score_a) : m.score_a) : '—';
+    const sb = m.score_b != null ? (typeof m.score_b === 'object' ? JSON.stringify(m.score_b) : m.score_b) : '—';
+    return `
+    <tr class="clickable" onclick="navigate('match-detail',{id:${m.id}})">
+      <td>${sportIcon(sportMap[m.sport_id]?.name)} ${sportMap[m.sport_id]?.name||'—'}</td>
+      <td><strong>${ta?.name||'?'}</strong> vs <strong>${tb?.name||'?'}</strong></td>
+      <td style="font-family:monospace;font-weight:700">${sa} : ${sb}</td>
+      <td>${badge(m.status)}</td>
+      <td>${fmtDateTime(m.scheduled_at)}</td>
+      <td>${m.venue||'—'}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="6" style="text-align:center;padding:32px;color:#94a3b8">No matches found</td></tr>';
+
+  const teamOptions = teams.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+  const sportOptions = sports.map(s => `<option value="${s.id}">${sportIcon(s.name)} ${s.name}</option>`).join('');
+
+  const statuses = ['','scheduled','in_progress','completed','cancelled','postponed'];
+
+  return `
+  <div class="page-header">
+    <div><div class="page-title">Matches</div><div class="page-sub">${matches.length} matches</div></div>
+    <button class="btn btn-primary" onclick="openModal('add-match-modal')">+ Schedule Match</button>
+  </div>
+  <div class="search-bar">
+    <select class="form-control" style="width:180px" onchange="navigate('matches',{status:this.value})">
+      ${statuses.map(s=>`<option value="${s}" ${s===statusFilter?'selected':''}>${s||'All Statuses'}</option>`).join('')}
+    </select>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+      <table><thead><tr><th>Sport</th><th>Teams</th><th>Score</th><th>Status</th><th>Scheduled</th><th>Venue</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    </div>
+  </div>
+  ${modalHTML('add-match-modal','Schedule Match',`
+    <form id="add-match-form">
+      <div class="form-group"><label class="form-label">Sport</label>
+        <select class="form-control" id="am2-sport">${sportOptions}</select>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Team A</label>
+          <select class="form-control" id="am2-ta">${teamOptions}</select>
+        </div>
+        <div class="form-group"><label class="form-label">Team B</label>
+          <select class="form-control" id="am2-tb">${teamOptions}</select>
+        </div>
+      </div>
+      <div class="form-group"><label class="form-label">Scheduled Date/Time</label>
+        <input class="form-control" type="datetime-local" id="am2-dt"/>
+      </div>
+      <div class="form-group"><label class="form-label">Venue</label>
+        <input class="form-control" id="am2-venue" placeholder="e.g. Main Ground"/>
+      </div>
+    </form>`,
+    `<button class="btn btn-secondary" onclick="closeModal('add-match-modal')">Cancel</button>
+     <button class="btn btn-primary" onclick="submitAddMatch()">Schedule</button>`
+  )}`;
+}
+
+async function submitAddMatch() {
+  const ta = document.getElementById('am2-ta').value;
+  const tb = document.getElementById('am2-tb').value;
+  if (ta === tb) { showAlert('Teams must be different'); return; }
+  try {
+    await API.post('/matches', {
+      sport_id:    parseInt(document.getElementById('am2-sport').value),
+      team_a_id:   parseInt(ta),
+      team_b_id:   parseInt(tb),
+      scheduled_at:document.getElementById('am2-dt').value || null,
+      venue:       document.getElementById('am2-venue').value || null,
+    });
+    closeModal('add-match-modal');
+    showAlert('Match scheduled!', 'success');
+    navigate('matches');
+  } catch(e) { showAlert(e.message); }
+}
+
+// ─── Match Detail / Live Scoring ──────────────────────────────────
+async function renderMatchDetail() {
+  const id = State.pageParams?.id;
+  let match = {}, events = [], teams = [], sports = [];
+  try {
+    [match, events, teams, sports] = await Promise.all([
+      API.get(`/matches/${id}`),
+      API.get(`/matches/${id}/events`),
+      API.get('/teams'),
+      API.get('/sports'),
+    ]);
+  } catch(e) {}
+
+  const teamMap  = Object.fromEntries(teams.map(t => [t.id, t]));
+  const sportMap = Object.fromEntries(sports.map(s => [s.id, s]));
+  const ta = teamMap[match.team_a_id], tb = teamMap[match.team_b_id];
+  const sport = sportMap[match.sport_id];
+  const sa = match.score_a != null ? (typeof match.score_a === 'object' ? JSON.stringify(match.score_a) : match.score_a) : 0;
+  const sb = match.score_b != null ? (typeof match.score_b === 'object' ? JSON.stringify(match.score_b) : match.score_b) : 0;
+
+  const teamAopts = `<option value="${match.team_a_id}">${ta?.name||'Team A'}</option>`;
+  const teamBopts = `<option value="${match.team_b_id}">${tb?.name||'Team B'}</option>`;
+
+  const statusBtns = ['in_progress','completed','cancelled','postponed'].map(s =>
+    `<button class="btn btn-sm ${s==='completed'?'btn-success':s==='in_progress'?'btn-primary':'btn-secondary'}"
+      onclick="updateMatchStatus(${id},'${s}')">${s.replace('_',' ')}</button>`
+  ).join('');
+
+  return `
+  <div style="margin-bottom:16px">
+    <button class="btn btn-secondary btn-sm" onclick="navigate('matches')">← Back to Matches</button>
+  </div>
+  <div class="score-board">
+    <div class="score-team">
+      <div class="score-team-name">${ta?.name||'Team A'}</div>
+      <div class="score-num" id="score-a">${sa}</div>
+    </div>
+    <div class="score-vs">VS</div>
+    <div class="score-team">
+      <div class="score-team-name">${tb?.name||'Team B'}</div>
+      <div class="score-num" id="score-b">${sb}</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <div>
+      <span style="margin-right:8px">${badge(match.status)}</span>
+      <span style="font-size:13px;color:var(--gray-500)">${sportIcon(sport?.name)} ${sport?.name||'—'} · ${match.venue||'No venue'} · ${fmtDateTime(match.scheduled_at)}</span>
+    </div>
+    <div style="display:flex;gap:8px">${statusBtns}</div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:16px">📊 Update Score</div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">${ta?.name||'Team A'} Score</label>
+          <input class="form-control" type="number" id="sc-a" value="${typeof match.score_a==='number'?match.score_a:0}" min="0"/>
+        </div>
+        <div class="form-group"><label class="form-label">${tb?.name||'Team B'} Score</label>
+          <input class="form-control" type="number" id="sc-b" value="${typeof match.score_b==='number'?match.score_b:0}" min="0"/>
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="updateScore(${id},${match.team_a_id},${match.team_b_id})">💾 Save Score</button>
+    </div>
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:16px">⚡ Log Event</div>
+      <div class="form-group">
+        <label class="form-label">Event Type</label>
+        <input class="form-control" id="ev-type" placeholder="goal, wicket, point, foul…"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Team</label>
+        <select class="form-control" id="ev-team">
+          ${teamAopts}${teamBopts}
+        </select>
+      </div>
+      <button class="btn btn-primary" onclick="logEvent(${id})">+ Log Event</button>
+    </div>
+  </div>
+  <div class="card" style="margin-top:20px;padding:0;overflow:hidden">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--gray-100);font-weight:700">📋 Match Events (${events.length})</div>
+    <div class="table-wrap">
+      <table><thead><tr><th>Time</th><th>Type</th><th>Team</th><th>Data</th></tr></thead>
+      <tbody>${events.length ? events.map(e=>`
+        <tr>
+          <td style="font-size:12px;color:var(--gray-500)">${fmtDateTime(e.created_at)}</td>
+          <td>${badge(e.event_type)}</td>
+          <td>${teamMap[e.team_id]?.name||'—'}</td>
+          <td style="font-size:12px;font-family:monospace">${e.event_data?JSON.stringify(e.event_data):''}</td>
+        </tr>`).join('') :
+        '<tr><td colspan="4" style="text-align:center;padding:24px;color:#94a3b8">No events logged</td></tr>'}
+      </tbody></table>
+    </div>
+  </div>`;
+}
+
+async function updateScore(matchId, taId, tbId) {
+  const sa = parseInt(document.getElementById('sc-a').value);
+  const sb = parseInt(document.getElementById('sc-b').value);
+  const winnerId = sa > sb ? taId : (sb > sa ? tbId : null);
+  try {
+    await API.patch(`/matches/${matchId}/score`, { score_a: sa, score_b: sb, winner_id: winnerId });
+    showAlert('Score updated!', 'success');
+    document.getElementById('score-a').textContent = sa;
+    document.getElementById('score-b').textContent = sb;
+  } catch(e) { showAlert(e.message); }
+}
+
+async function updateMatchStatus(matchId, status) {
+  try {
+    await API.patch(`/matches/${matchId}/score`, { score_a: null, score_b: null, status });
+    showAlert(`Status → ${status}`, 'success');
+    navigate('match-detail', { id: matchId });
+  } catch(e) { showAlert(e.message); }
+}
+
+async function logEvent(matchId) {
+  const type = document.getElementById('ev-type').value;
+  const team = document.getElementById('ev-team').value;
+  if (!type) { showAlert('Enter event type'); return; }
+  try {
+    await API.post(`/matches/${matchId}/events`, { event_type: type, team_id: parseInt(team) });
+    showAlert('Event logged!', 'success');
+    navigate('match-detail', { id: matchId });
+  } catch(e) { showAlert(e.message); }
+}
+
+// ─── Tournaments Page ─────────────────────────────────────────────
+async function renderTournaments() {
+  let tournaments = [], sports = [], clubs = [];
+  try {
+    [tournaments, sports, clubs] = await Promise.all([
+      API.get('/tournaments'),
+      API.get('/sports'),
+      API.get('/clubs'),
+    ]);
+  } catch(e) {}
+
+  const sportMap = Object.fromEntries(sports.map(s => [s.id, s]));
+  const sportOptions = sports.map(s => `<option value="${s.id}">${sportIcon(s.name)} ${s.name}</option>`).join('');
+  const clubOptions  = clubs.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+
+  const rows = tournaments.map(t => `
+    <tr class="clickable" onclick="navigate('tournament-detail',{id:${t.id}})">
+      <td><strong>${t.name}</strong></td>
+      <td>${sportIcon(sportMap[t.sport_id]?.name)} ${sportMap[t.sport_id]?.name||'—'}</td>
+      <td>${badge(t.status)}</td>
+      <td>${t.bracket_type?.replace('_',' ')||'—'}</td>
+      <td>${t.max_teams}</td>
+      <td>${fmtDate(t.start_date)}</td>
+      <td>${t.venue||'—'}</td>
+    </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;padding:32px;color:#94a3b8">No tournaments yet</td></tr>';
+
+  return `
+  <div class="page-header">
+    <div><div class="page-title">Tournaments</div><div class="page-sub">${tournaments.length} tournaments</div></div>
+    <button class="btn btn-primary" onclick="openModal('add-tourn-modal')">+ New Tournament</button>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+      <table><thead><tr><th>Name</th><th>Sport</th><th>Status</th><th>Format</th><th>Max Teams</th><th>Start</th><th>Venue</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    </div>
+  </div>
+  ${modalHTML('add-tourn-modal','Create Tournament',`
+    <form id="add-tourn-form">
+      <div class="form-group"><label class="form-label">Tournament Name</label><input class="form-control" id="at2-name" required/></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Sport</label>
+          <select class="form-control" id="at2-sport">${sportOptions}</select>
+        </div>
+        <div class="form-group"><label class="form-label">Organising Club</label>
+          <select class="form-control" id="at2-club">${clubOptions}</select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Format</label>
+          <select class="form-control" id="at2-bracket">
+            <option value="single_elimination">Single Elimination</option>
+            <option value="double_elimination">Double Elimination</option>
+            <option value="round_robin">Round Robin</option>
+            <option value="swiss">Swiss</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Max Teams</label>
+          <input class="form-control" type="number" id="at2-max" value="16" min="2"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Start Date</label>
+          <input class="form-control" type="date" id="at2-start"/>
+        </div>
+        <div class="form-group"><label class="form-label">End Date</label>
+          <input class="form-control" type="date" id="at2-end"/>
+        </div>
+      </div>
+      <div class="form-group"><label class="form-label">Venue</label><input class="form-control" id="at2-venue"/></div>
+      <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="at2-desc" rows="2"></textarea></div>
+    </form>`,
+    `<button class="btn btn-secondary" onclick="closeModal('add-tourn-modal')">Cancel</button>
+     <button class="btn btn-primary" onclick="submitAddTournament()">Create</button>`
+  )}`;
+}
+
+async function submitAddTournament() {
+  try {
+    await API.post('/tournaments', {
+      name:         document.getElementById('at2-name').value,
+      sport_id:     parseInt(document.getElementById('at2-sport').value),
+      organizer_id: parseInt(document.getElementById('at2-club').value),
+      bracket_type: document.getElementById('at2-bracket').value,
+      max_teams:    parseInt(document.getElementById('at2-max').value),
+      start_date:   document.getElementById('at2-start').value || null,
+      end_date:     document.getElementById('at2-end').value || null,
+      venue:        document.getElementById('at2-venue').value || null,
+      description:  document.getElementById('at2-desc').value || null,
+    });
+    closeModal('add-tourn-modal');
+    showAlert('Tournament created!', 'success');
+    navigate('tournaments');
+  } catch(e) { showAlert(e.message); }
+}
+
+// ─── Tournament Detail ────────────────────────────────────────────
+async function renderTournamentDetail() {
+  const id = State.pageParams?.id;
+  let tournament = {}, regTeams = [], allTeams = [], sports = [];
+  try {
+    [tournament, regTeams, allTeams, sports] = await Promise.all([
+      API.get(`/tournaments/${id}`),
+      API.get(`/tournaments/${id}/teams`),
+      API.get('/teams'),
+      API.get('/sports'),
+    ]);
+  } catch(e) {}
+
+  const sport = sports.find(s => s.id === tournament.sport_id);
+  const regIds = new Set(regTeams.map(t => t.team_id));
+  const availTeams = allTeams.filter(t => !regIds.has(t.id));
+  const teamOptions = availTeams.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+
+  const statuses = ['draft','registration','in_progress','completed'];
+
+  return `
+  <div style="margin-bottom:16px">
+    <button class="btn btn-secondary btn-sm" onclick="navigate('tournaments')">← Back to Tournaments</button>
+  </div>
+  <div class="page-header">
+    <div>
+      <div class="page-title">${tournament.name||'—'}</div>
+      <div class="page-sub">${sportIcon(sport?.name)} ${sport?.name||'—'} · ${tournament.bracket_type?.replace(/_/g,' ')||'—'} · ${fmtDate(tournament.start_date)} → ${fmtDate(tournament.end_date)}</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      ${badge(tournament.status)}
+      <select class="form-control" style="width:160px" onchange="updateTournamentStatus(${id},this.value)">
+        ${statuses.map(s=>`<option value="${s}" ${s===tournament.status?'selected':''}>${s.replace(/_/g,' ')}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:200px 1fr;gap:8px;margin-bottom:24px">
+    <div class="card-sm"><div style="font-size:11px;font-weight:600;color:var(--gray-500)">TEAMS</div><div style="font-size:22px;font-weight:700">${regTeams.length}/${tournament.max_teams}</div></div>
+    <div class="card-sm"><div style="font-size:11px;font-weight:600;color:var(--gray-500)">VENUE</div><div style="font-size:14px;font-weight:600;margin-top:4px">${tournament.venue||'TBD'}</div></div>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div style="font-weight:700;font-size:15px">🛡️ Registered Teams</div>
+    ${tournament.status === 'registration' ? `<button class="btn btn-primary btn-sm" onclick="openModal('reg-team-modal')">+ Register Team</button>` : ''}
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+      <table><thead><tr><th>Team</th><th>Seed</th><th>Approved</th><th>Registered</th></tr></thead>
+      <tbody>${regTeams.length ? regTeams.map(t=>`
+        <tr>
+          <td><strong>${t.team_name||'—'}</strong></td>
+          <td>${t.seed||'—'}</td>
+          <td>${t.is_approved ? '✅' : '⏳'}</td>
+          <td>${fmtDate(t.registered_at)}</td>
+        </tr>`).join('') : '<tr><td colspan="4" style="text-align:center;padding:24px;color:#94a3b8">No teams registered yet</td></tr>'}
+      </tbody></table>
+    </div>
+  </div>
+  ${modalHTML('reg-team-modal','Register Team',`
+    <div class="form-group"><label class="form-label">Select Team</label>
+      <select class="form-control" id="rt-team">${teamOptions||'<option disabled>No teams available</option>'}</select>
+    </div>`,
+    `<button class="btn btn-secondary" onclick="closeModal('reg-team-modal')">Cancel</button>
+     <button class="btn btn-primary" onclick="registerTeam(${id})">Register</button>`
+  )}`;
+}
+
+async function registerTeam(tournamentId) {
+  const teamId = document.getElementById('rt-team').value;
+  if (!teamId) { showAlert('Select a team'); return; }
+  try {
+    await API.post(`/tournaments/${tournamentId}/register?team_id=${teamId}`);
+    closeModal('reg-team-modal');
+    showAlert('Team registered!', 'success');
+    navigate('tournament-detail', { id: tournamentId });
+  } catch(e) { showAlert(e.message); }
+}
+
+async function updateTournamentStatus(id, status) {
+  try {
+    await API.patch(`/tournaments/${id}/status?status=${status}`);
+    showAlert(`Status updated to ${status}`, 'success');
+    navigate('tournament-detail', { id });
+  } catch(e) { showAlert(e.message); }
+}
+
+// ─── Sports Page ──────────────────────────────────────────────────
+async function renderSports() {
+  let sports = [];
+  try { sports = await API.get('/sports'); } catch(e) {}
+
+  const cats = [...new Set(sports.map(s => s.category))];
+  return `
+  <div class="page-header">
+    <div><div class="page-title">Sports</div><div class="page-sub">${sports.length} sports configured</div></div>
+  </div>
+  ${cats.map(cat => `
+  <div style="margin-bottom:24px">
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gray-500);margin-bottom:12px">${cat}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
+      ${sports.filter(s=>s.category===cat).map(s=>`
+      <div class="card-sm" style="display:flex;align-items:center;gap:12px">
+        <div style="font-size:28px">${sportIcon(s.name)}</div>
+        <div>
+          <div style="font-weight:700;font-size:14px">${s.name}</div>
+          <div style="font-size:11px;color:var(--gray-500)">Team size: ${s.min_team_size}${s.min_team_size!==s.max_team_size?'–'+s.max_team_size:''}</div>
+        </div>
+      </div>`).join('')}
+    </div>
+  </div>`).join('')}`;
+}
+
+// ─── Clubs Page ───────────────────────────────────────────────────
+async function renderClubs() {
+  let clubs = [];
+  try { clubs = await API.get('/clubs'); } catch(e) {}
+
+  const rows = clubs.map(c => `
+    <tr>
+      <td>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:32px;height:32px;border-radius:8px;background:${c.primary_color};display:flex;align-items:center;justify-content:center;font-weight:800;color:${c.secondary_color};font-size:12px">${(c.short_name||c.name||'?')[0]}</div>
+          <div><div style="font-weight:600">${c.name}</div><div style="font-size:11px;color:var(--gray-500)">${c.code}</div></div>
+        </div>
+      </td>
+      <td>${c.city||'—'}</td>
+      <td>${c.country||'—'}</td>
+      <td>${badge(c.is_active?'active':'inactive')}</td>
+      <td>${fmtDate(c.created_at)}</td>
+    </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;padding:32px;color:#94a3b8">No clubs yet</td></tr>';
+
+  return `
+  <div class="page-header">
+    <div><div class="page-title">Clubs</div><div class="page-sub">${clubs.length} clubs</div></div>
+    <button class="btn btn-primary" onclick="openModal('add-club-modal')">+ New Club</button>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+      <table><thead><tr><th>Club</th><th>City</th><th>Country</th><th>Status</th><th>Created</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    </div>
+  </div>
+  ${modalHTML('add-club-modal','Add Club',`
+    <form id="add-club-form">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Club Name</label><input class="form-control" id="ac-name" required/></div>
+        <div class="form-group"><label class="form-label">Code (unique)</label><input class="form-control" id="ac-code" placeholder="e.g. FCB" maxlength="10" required/></div>
+      </div>
+      <div class="form-group"><label class="form-label">Short Name</label><input class="form-control" id="ac-short" placeholder="e.g. Barca"/></div>
+      <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="ac-desc" rows="2"></textarea></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">City</label><input class="form-control" id="ac-city"/></div>
+        <div class="form-group"><label class="form-label">Country</label><input class="form-control" id="ac-country" value="India"/></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Primary Color</label><input class="form-control" type="color" id="ac-p" value="#2563eb"/></div>
+        <div class="form-group"><label class="form-label">Secondary Color</label><input class="form-control" type="color" id="ac-s" value="#ffffff"/></div>
+      </div>
+    </form>`,
+    `<button class="btn btn-secondary" onclick="closeModal('add-club-modal')">Cancel</button>
+     <button class="btn btn-primary" onclick="submitAddClub()">Create Club</button>`
+  )}`;
+}
+
+async function submitAddClub() {
+  try {
+    await API.post('/clubs', {
+      name:            document.getElementById('ac-name').value,
+      code:            document.getElementById('ac-code').value.toUpperCase(),
+      short_name:      document.getElementById('ac-short').value || null,
+      description:     document.getElementById('ac-desc').value || null,
+      city:            document.getElementById('ac-city').value || null,
+      country:         document.getElementById('ac-country').value || 'India',
+      primary_color:   document.getElementById('ac-p').value,
+      secondary_color: document.getElementById('ac-s').value,
+    });
+    closeModal('add-club-modal');
+    showAlert('Club created!', 'success');
+    navigate('clubs');
+  } catch(e) { showAlert(e.message); }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  SHELL: Sidebar + Topbar
+// ═══════════════════════════════════════════════════════════════════
+const NAV_ITEMS = [
+  { id:'dashboard',   label:'Dashboard',   icon:'📊' },
+  { id:'players',     label:'Players',     icon:'👤' },
+  { id:'teams',       label:'Teams',       icon:'🛡️' },
+  { id:'matches',     label:'Matches',     icon:'⚔️' },
+  { id:'tournaments', label:'Tournaments', icon:'🏆' },
+  { id:'sports',      label:'Sports',      icon:'🏅' },
+  { id:'clubs',       label:'Clubs',       icon:'🏢' },
+];
+
+function renderShell(innerHTML) {
+  const u = State.user;
+  return `
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="icon">🏆</div>
+      <div><h1>SLMS</h1><p>Sports League Mgmt</p></div>
+    </div>
+    <nav class="nav">
+      ${NAV_ITEMS.map(n => `
+      <button class="nav-item ${State.currentPage.startsWith(n.id) ? 'active' : ''}"
+        onclick="navigate('${n.id}')">
+        <span class="nav-icon">${n.icon}</span>${n.label}
+      </button>`).join('')}
+    </nav>
+    <div class="sidebar-user">
+      <div class="user-info">
+        <div class="user-avatar">${initials(u)}</div>
+        <div>
+          <div class="user-name">${u?.full_name||u?.first_name||'User'}</div>
+          <div class="user-role">${(u?.role||'').replace(/_/g,' ')}</div>
+        </div>
+      </div>
+      <button class="btn-logout" onclick="logout()">🚪 Sign out</button>
+    </div>
+  </div>
+  <div class="main-content">
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:12px">
+        <button style="display:none;background:none;border:none;font-size:20px;cursor:pointer" id="menu-btn" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+        <div style="font-weight:700;font-size:15px">${NAV_ITEMS.find(n=>State.currentPage.startsWith(n.id))?.label||'SLMS'}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div id="global-alert" class="alert" style="display:none;margin:0;padding:8px 14px;font-size:12px"></div>
+        <span style="font-size:12px;color:var(--gray-500)">${u?.global_player_id||''}</span>
+      </div>
+    </div>
+    <div class="page" id="page-content">
+      ${innerHTML}
+    </div>
+  </div>`;
+}
+
+// ─── Debounce ─────────────────────────────────────────────────────
+function debounce(fn, ms) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MAIN RENDER LOOP
+// ═══════════════════════════════════════════════════════════════════
+async function render() {
+  const root = document.getElementById('app');
+
+  if (!State.user || !State.token) {
+    if (State.currentPage === 'register') {
+      root.innerHTML = renderRegister();
+      bindRegister();
+    } else {
+      root.innerHTML = renderLogin();
+      bindLogin();
+    }
+    return;
+  }
+
+  // Show loading shell first
+  root.innerHTML = renderShell('<div class="loading-page"><div class="spinner"></div></div>');
+
+  let pageHTML = '';
+  try {
+    switch (State.currentPage) {
+      case 'dashboard':         pageHTML = await renderDashboard();        break;
+      case 'players':           pageHTML = await renderPlayers();          break;
+      case 'player-detail':     pageHTML = await renderPlayerDetail();     break;
+      case 'teams':             pageHTML = await renderTeams();            break;
+      case 'team-detail':       pageHTML = await renderTeamDetail();       break;
+      case 'matches':           pageHTML = await renderMatches();          break;
+      case 'match-detail':      pageHTML = await renderMatchDetail();      break;
+      case 'tournaments':       pageHTML = await renderTournaments();      break;
+      case 'tournament-detail': pageHTML = await renderTournamentDetail(); break;
+      case 'sports':            pageHTML = await renderSports();           break;
+      case 'clubs':             pageHTML = await renderClubs();            break;
+      default:                  pageHTML = await renderDashboard();
+    }
+  } catch (err) {
+    pageHTML = `<div class="alert alert-error">Error loading page: ${err.message}</div>`;
+  }
+
+  // Re-render with full content
+  root.innerHTML = renderShell(pageHTML);
+
+  // Mobile menu button visibility
+  const menuBtn = document.getElementById('menu-btn');
+  if (menuBtn) menuBtn.style.display = window.innerWidth < 769 ? 'block' : 'none';
+}
+
+// Boot
+render();
+</script>
+</body>
+</html>
