@@ -5,7 +5,10 @@ python-dotenv==1.0.1
 pydantic[email]==2.7.1
 pydantic-settings==2.2.1
 python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
+bcrypt==4.1.2
 
 # Only needed if using MySQL (DB_TYPE=mysql in .env)
 # pymysql==1.1.0
+
+# Database migrations
+alembic==1.13.1
