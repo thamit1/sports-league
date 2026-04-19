@@ -96,7 +96,13 @@ DB_NAME=slms_db
 DB_USER=slms_user
 DB_PASSWORD=YourPassword
 ```
-
+To switch to mysql
+```env
+DB_TYPE=mysql
+DB_HOST=localhost
+DB_NAME=slms_db
+DB_USER=slms_user
+DB_PASSWORD=yourpassword
 ---
 
 ### Step 4 — Run
