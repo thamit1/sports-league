@@ -1,11 +1,11 @@
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
 sqlalchemy==2.0.30
-pymysql==1.1.0
 python-dotenv==1.0.1
 pydantic[email]==2.7.1
 pydantic-settings==2.2.1
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-alembic==1.13.1
-cryptography==42.0.7
+
+# Only needed if using MySQL (DB_TYPE=mysql in .env)
+# pymysql==1.1.0

@@ -2,10 +2,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from app.core.config import settings
 
+# SQLite needs check_same_thread=False; MySQL doesn't need it
+connect_args = {"check_same_thread": False} if settings.DB_TYPE == "sqlite" else {}
+
 engine = create_engine(
     settings.DATABASE_URL,
-    pool_pre_ping=True,
-    pool_recycle=3600,
+    connect_args=connect_args,
     echo=settings.APP_ENV == "development",
 )
 
