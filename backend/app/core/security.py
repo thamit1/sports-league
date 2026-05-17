@@ -4,9 +4,9 @@ from jose import JWTError, jwt
 import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy.orm import Session
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import get_db, execute_query
+import sqlite3
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
@@ -41,19 +41,40 @@ def decode_token(token: str) -> dict:
         )
 
 
-def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db),
-):
+def get_current_user(token: str = Depends(oauth2_scheme)):
     from app.models.models import User
     payload = decode_token(token)
     user_id: int = payload.get("sub")
     if user_id is None:
         raise HTTPException(status_code=401, detail="Invalid token payload")
-    user = db.query(User).filter(User.id == int(user_id), User.is_active == True).first()
-    if not user:
+
+    user_data = execute_query(
+        "SELECT * FROM users WHERE id = ? AND is_active = 1",
+        (int(user_id),),
+        fetch_one=True
+    )
+
+    if not user_data:
         raise HTTPException(status_code=401, detail="User not found or inactive")
-    return user
+
+    return User(
+        id=user_data['id'],
+        email=user_data['email'],
+        phone=user_data['phone'],
+        password_hash=user_data['password_hash'],
+        first_name=user_data['first_name'],
+        last_name=user_data['last_name'],
+        role=user_data['role'],
+        club_id=user_data['club_id'],
+        global_player_id=user_data['global_player_id'],
+        avatar_url=user_data['avatar_url'],
+        date_of_birth=user_data['date_of_birth'],
+        gender=user_data['gender'],
+        is_active=user_data['is_active'],
+        is_verified=user_data['is_verified'],
+        created_at=user_data['created_at'],
+        updated_at=user_data['updated_at'],
+    )
 
 
 def require_roles(*roles: str):
@@ -65,3 +86,4 @@ def require_roles(*roles: str):
             )
         return current_user
     return _dependency
+

@@ -1,85 +1,194 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
-from app.core.database import get_db
+from app.core.database import execute_query
 from app.core.security import get_current_user, require_roles
-from app.models.models import Match, MatchEvent, MatchStatus, UserRole
+from app.models.models import MatchStatus, UserRole
 from app.schemas.schemas import MatchCreate, MatchOut, MatchScoreUpdate, MatchEventCreate
+import json
 
 router = APIRouter()
 
 
-@router.get("/", response_model=List[MatchOut])
+@router.get("/", response_model=List[dict])
 def list_matches(
     tournament_id: Optional[int] = Query(None),
-    status: Optional[MatchStatus] = Query(None),
+    status: Optional[str] = Query(None),
     sport_id: Optional[int] = Query(None),
     skip: int = 0,
     limit: int = 50,
-    db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    q = db.query(Match)
+    query = "SELECT * FROM matches WHERE 1=1"
+    params = []
+
     if tournament_id:
-        q = q.filter(Match.tournament_id == tournament_id)
+        query += " AND tournament_id = ?"
+        params.append(tournament_id)
     if status:
-        q = q.filter(Match.status == status)
+        query += " AND status = ?"
+        params.append(status)
     if sport_id:
-        q = q.filter(Match.sport_id == sport_id)
-    return q.order_by(Match.scheduled_at.desc()).offset(skip).limit(limit).all()
+        query += " AND sport_id = ?"
+        params.append(sport_id)
+
+    query += f" ORDER BY scheduled_at DESC LIMIT {limit} OFFSET {skip}"
+
+    matches_rows = execute_query(query, tuple(params), fetch_all=True)
+
+    return [
+        {
+            "id": m['id'],
+            "sport_id": m['sport_id'],
+            "tournament_id": m['tournament_id'],
+            "team_a_id": m['team_a_id'],
+            "team_b_id": m['team_b_id'],
+            "official_id": m['official_id'],
+            "status": m['status'],
+            "scheduled_at": m['scheduled_at'],
+            "started_at": m['started_at'],
+            "ended_at": m['ended_at'],
+            "venue": m['venue'],
+            "score_a": json.loads(m['score_a']) if m['score_a'] else None,
+            "score_b": json.loads(m['score_b']) if m['score_b'] else None,
+            "winner_id": m['winner_id'],
+            "round_number": m['round_number'],
+            "notes": m['notes'],
+            "created_at": m['created_at'],
+            "updated_at": m['updated_at'],
+        }
+        for m in matches_rows
+    ]
 
 
-@router.post("/", response_model=MatchOut, status_code=201)
+@router.post("/", response_model=dict, status_code=201)
 def create_match(
     payload: MatchCreate,
-    db: Session = Depends(get_db),
     _=Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.CLUB_ADMIN, UserRole.CLUB_MANAGER)),
 ):
     if payload.team_a_id == payload.team_b_id:
         raise HTTPException(status_code=400, detail="Teams must be different")
-    match = Match(**payload.model_dump())
-    db.add(match)
-    db.commit()
-    db.refresh(match)
-    return match
+
+    match_data = payload.model_dump()
+    match_id = execute_query(
+        """INSERT INTO matches
+           (sport_id, tournament_id, team_a_id, team_b_id, official_id, status, scheduled_at, venue, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            match_data.get('sport_id'),
+            match_data.get('tournament_id'),
+            match_data.get('team_a_id'),
+            match_data.get('team_b_id'),
+            match_data.get('official_id'),
+            match_data.get('status', 'scheduled'),
+            match_data.get('scheduled_at'),
+            match_data.get('venue'),
+            match_data.get('notes'),
+        ),
+        return_lastid=True
+    )
+
+    match_row = execute_query(
+        "SELECT * FROM matches WHERE id = ?",
+        (match_id,),
+        fetch_one=True
+    )
+
+    return {
+        "id": match_row['id'],
+        "sport_id": match_row['sport_id'],
+        "tournament_id": match_row['tournament_id'],
+        "team_a_id": match_row['team_a_id'],
+        "team_b_id": match_row['team_b_id'],
+        "official_id": match_row['official_id'],
+        "status": match_row['status'],
+        "scheduled_at": match_row['scheduled_at'],
+        "started_at": match_row['started_at'],
+        "ended_at": match_row['ended_at'],
+        "venue": match_row['venue'],
+        "score_a": json.loads(match_row['score_a']) if match_row['score_a'] else None,
+        "score_b": json.loads(match_row['score_b']) if match_row['score_b'] else None,
+        "winner_id": match_row['winner_id'],
+        "round_number": match_row['round_number'],
+        "notes": match_row['notes'],
+        "created_at": match_row['created_at'],
+        "updated_at": match_row['updated_at'],
+    }
 
 
-@router.get("/{match_id}", response_model=MatchOut)
-def get_match(match_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    match = db.query(Match).filter(Match.id == match_id).first()
-    if not match:
+@router.get("/{match_id}", response_model=dict)
+def get_match(match_id: int, _=Depends(get_current_user)):
+    match_row = execute_query(
+        "SELECT * FROM matches WHERE id = ?",
+        (match_id,),
+        fetch_one=True
+    )
+    if not match_row:
         raise HTTPException(status_code=404, detail="Match not found")
-    return match
+
+    return {
+        "id": match_row['id'],
+        "sport_id": match_row['sport_id'],
+        "tournament_id": match_row['tournament_id'],
+        "team_a_id": match_row['team_a_id'],
+        "team_b_id": match_row['team_b_id'],
+        "official_id": match_row['official_id'],
+        "status": match_row['status'],
+        "scheduled_at": match_row['scheduled_at'],
+        "started_at": match_row['started_at'],
+        "ended_at": match_row['ended_at'],
+        "venue": match_row['venue'],
+        "score_a": json.loads(match_row['score_a']) if match_row['score_a'] else None,
+        "score_b": json.loads(match_row['score_b']) if match_row['score_b'] else None,
+        "winner_id": match_row['winner_id'],
+        "round_number": match_row['round_number'],
+        "notes": match_row['notes'],
+        "created_at": match_row['created_at'],
+        "updated_at": match_row['updated_at'],
+    }
 
 
 @router.patch("/{match_id}/score")
 def update_score(
     match_id: int,
     payload: MatchScoreUpdate,
-    db: Session = Depends(get_db),
     _=Depends(require_roles(
         UserRole.SUPER_ADMIN, UserRole.CLUB_ADMIN,
         UserRole.CLUB_MANAGER, UserRole.OFFICIAL
     )),
 ):
-    match = db.query(Match).filter(Match.id == match_id).first()
-    if not match:
+    existing = execute_query(
+        "SELECT * FROM matches WHERE id = ?",
+        (match_id,),
+        fetch_one=True
+    )
+    if not existing:
         raise HTTPException(status_code=404, detail="Match not found")
 
-    match.score_a = payload.score_a
-    match.score_b = payload.score_b
+    updates = {}
+    if payload.score_a:
+        updates['score_a'] = json.dumps(payload.score_a)
+    if payload.score_b:
+        updates['score_b'] = json.dumps(payload.score_b)
     if payload.winner_id:
-        match.winner_id = payload.winner_id
+        updates['winner_id'] = payload.winner_id
     if payload.status:
-        match.status = payload.status
-        if payload.status == MatchStatus.IN_PROGRESS and not match.started_at:
-            match.started_at = datetime.utcnow()
-        if payload.status == MatchStatus.COMPLETED and not match.ended_at:
-            match.ended_at = datetime.utcnow()
-    match.updated_at = datetime.utcnow()
-    db.commit()
-    db.refresh(match)
+        updates['status'] = payload.status
+        if payload.status == MatchStatus.IN_PROGRESS.value and not existing['started_at']:
+            updates['started_at'] = datetime.utcnow().isoformat()
+        if payload.status == MatchStatus.COMPLETED.value and not existing['ended_at']:
+            updates['ended_at'] = datetime.utcnow().isoformat()
+
+    updates['updated_at'] = datetime.utcnow().isoformat()
+
+    if updates:
+        fields = ', '.join([f"{k} = ?" for k in updates.keys()])
+        values = list(updates.values()) + [match_id]
+        execute_query(
+            f"UPDATE matches SET {fields} WHERE id = ?",
+            tuple(values)
+        )
+
     return {"message": "Score updated", "match_id": match_id}
 
 
@@ -87,36 +196,55 @@ def update_score(
 def add_event(
     match_id: int,
     payload: MatchEventCreate,
-    db: Session = Depends(get_db),
     _=Depends(require_roles(
         UserRole.SUPER_ADMIN, UserRole.CLUB_ADMIN,
         UserRole.CLUB_MANAGER, UserRole.OFFICIAL
     )),
 ):
-    match = db.query(Match).filter(Match.id == match_id).first()
+    match = execute_query(
+        "SELECT id FROM matches WHERE id = ?",
+        (match_id,),
+        fetch_one=True
+    )
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
-    event = MatchEvent(match_id=match_id, **payload.model_dump())
-    db.add(event)
-    db.commit()
-    db.refresh(event)
-    return {"message": "Event recorded", "event_id": event.id}
+
+    event_data = payload.model_dump()
+    event_id = execute_query(
+        """INSERT INTO match_events
+           (match_id, team_id, player_id, event_type, event_data, minute)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (
+            match_id,
+            event_data.get('team_id'),
+            event_data.get('player_id'),
+            event_data.get('event_type'),
+            json.dumps(event_data.get('event_data')) if event_data.get('event_data') else None,
+            event_data.get('minute'),
+        ),
+        return_lastid=True
+    )
+
+    return {"message": "Event recorded", "event_id": event_id}
 
 
 @router.get("/{match_id}/events")
-def get_events(match_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    events = db.query(MatchEvent).filter(MatchEvent.match_id == match_id).order_by(
-        MatchEvent.created_at
-    ).all()
+def get_events(match_id: int, _=Depends(get_current_user)):
+    events_rows = execute_query(
+        "SELECT * FROM match_events WHERE match_id = ? ORDER BY created_at",
+        (match_id,),
+        fetch_all=True
+    )
+
     return [
         {
-            "id": e.id,
-            "event_type": e.event_type,
-            "event_data": e.event_data,
-            "team_id": e.team_id,
-            "player_id": e.player_id,
-            "minute": e.minute,
-            "created_at": e.created_at.isoformat(),
+            "id": e['id'],
+            "event_type": e['event_type'],
+            "event_data": json.loads(e['event_data']) if e['event_data'] else None,
+            "team_id": e['team_id'],
+            "player_id": e['player_id'],
+            "minute": e['minute'],
+            "created_at": e['created_at'],
         }
-        for e in events
+        for e in events_rows
     ]

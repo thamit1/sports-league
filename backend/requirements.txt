@@ -1,14 +1,7 @@
-fastapi==0.111.0
-uvicorn[standard]==0.29.0
-sqlalchemy==2.0.30
-python-dotenv==1.0.1
-pydantic[email]==2.7.1
-pydantic-settings==2.2.1
+fastapi==0.104.1
+uvicorn==0.24.0
+python-dotenv==1.0.0
+pydantic[email]==2.5.0
+pydantic-settings==2.1.0
 python-jose[cryptography]==3.3.0
-bcrypt==4.1.2
-
-# Only needed if using MySQL (DB_TYPE=mysql in .env)
-# pymysql==1.1.0
-
-# Database migrations
-alembic==1.13.1
+bcrypt==4.0.1

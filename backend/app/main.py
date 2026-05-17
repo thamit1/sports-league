@@ -3,10 +3,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from app.core.config import settings
-from app.core.database import engine, Base
+from app.core.database import init_db
 from app.routers import auth, clubs, players, teams, sports, matches, tournaments, dashboard
 
-Base.metadata.create_all(bind=engine)
+# Initialize database
+init_db()
 
 app = FastAPI(
     title="Sports League Management System",

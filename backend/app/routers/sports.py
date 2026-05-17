@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException
 from typing import List
-from app.core.database import get_db
+from app.core.database import execute_query
 from app.core.security import get_current_user
 from app.models.models import Sport
 from app.schemas.schemas import SportOut
+import json
 
 router = APIRouter()
 
@@ -31,23 +31,64 @@ DEFAULT_SPORTS = [
 ]
 
 
-@router.get("/", response_model=List[SportOut])
-def list_sports(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    sports = db.query(Sport).filter(Sport.is_active == True).all()
-    if not sports:
+@router.get("/", response_model=List[dict])
+def list_sports(_=Depends(get_current_user)):
+    sports_rows = execute_query(
+        "SELECT * FROM sports WHERE is_active = 1",
+        fetch_all=True
+    )
+
+    if not sports_rows:
         # Seed on first call
-        sports = [Sport(**s) for s in DEFAULT_SPORTS]
-        db.add_all(sports)
-        db.commit()
-        for s in sports:
-            db.refresh(s)
-    return sports
+        for sport in DEFAULT_SPORTS:
+            execute_query(
+                """INSERT INTO sports (name, category, max_team_size, min_team_size, icon, is_active)
+                   VALUES (?, ?, ?, ?, ?, 1)""",
+                (
+                    sport['name'],
+                    sport['category'],
+                    sport['max_team_size'],
+                    sport['min_team_size'],
+                    sport['icon'],
+                )
+            )
+        sports_rows = execute_query(
+            "SELECT * FROM sports WHERE is_active = 1",
+            fetch_all=True
+        )
+
+    return [
+        {
+            "id": s['id'],
+            "name": s['name'],
+            "category": s['category'],
+            "max_team_size": s['max_team_size'],
+            "min_team_size": s['min_team_size'],
+            "scoring_config": json.loads(s['scoring_config']) if s['scoring_config'] else None,
+            "is_active": s['is_active'],
+            "icon": s['icon'],
+        }
+        for s in sports_rows
+    ]
 
 
-@router.get("/{sport_id}", response_model=SportOut)
-def get_sport(sport_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    from fastapi import HTTPException
-    sport = db.query(Sport).filter(Sport.id == sport_id).first()
-    if not sport:
+@router.get("/{sport_id}", response_model=dict)
+def get_sport(sport_id: int, _=Depends(get_current_user)):
+    sport_row = execute_query(
+        "SELECT * FROM sports WHERE id = ?",
+        (sport_id,),
+        fetch_one=True
+    )
+    if not sport_row:
         raise HTTPException(status_code=404, detail="Sport not found")
-    return sport
+
+    return {
+        "id": sport_row['id'],
+        "name": sport_row['name'],
+        "category": sport_row['category'],
+        "max_team_size": sport_row['max_team_size'],
+        "min_team_size": sport_row['min_team_size'],
+        "scoring_config": json.loads(sport_row['scoring_config']) if sport_row['scoring_config'] else None,
+        "is_active": sport_row['is_active'],
+        "icon": sport_row['icon'],
+    }
