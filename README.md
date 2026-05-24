@@ -1,134 +1,109 @@
 # 🏆 SLMS — Sports League Management System
 
-A full-featured Sports League Management System built with **FastAPI + MySQL** backend
-and a **pure HTML/JS frontend served by FastAPI** — zero npm, zero Node.js required.
+A full-featured Sports League Management System built with **FastAPI** backend
+and a **pure HTML/JS single-page frontend served by FastAPI** — zero npm, zero
+Node.js. Default storage is **SQLite** (zero-config); MySQL is supported via a
+single env-var switch.
+
+**Status:** MVP deployed and live on BigRock shared hosting at
+[https://sportsleague.amitastrosolutions.in](https://sportsleague.amitastrosolutions.in)
 
 ---
 
 ## 📁 Project Structure
 
 ```
-slms/
+sports-league/
 ├── backend/
 │   ├── app/
 │   │   ├── core/
-│   │   │   ├── config.py       # Settings (reads .env)
-│   │   │   ├── database.py     # SQLAlchemy engine + session
-│   │   │   └── security.py     # JWT auth + password hashing
-│   │   ├── models/
-│   │   │   └── models.py       # All DB models (Club, User, Team, Match…)
+│   │   │   ├── config.py       # Settings (reads .env), DB switch
+│   │   │   ├── database.py     # SQLAlchemy engine + session, init_db
+│   │   │   ├── logging.py      # Logging config
+│   │   │   └── security.py     # JWT auth + bcrypt password hashing
+│   │   ├── models/models.py    # All DB models (Club, User, Team, Match…)
 │   │   ├── routers/
-│   │   │   ├── auth.py         # POST /api/auth/login|register, GET /me
+│   │   │   ├── auth.py         # /api/auth/login|register|me
 │   │   │   ├── clubs.py        # CRUD /api/clubs
 │   │   │   ├── players.py      # CRUD /api/players
 │   │   │   ├── teams.py        # CRUD /api/teams + roster management
-│   │   │   ├── sports.py       # GET /api/sports (auto-seeded 18 sports)
-│   │   │   ├── matches.py      # CRUD /api/matches + live scoring + events
+│   │   │   ├── sports.py       # GET /api/sports (auto-seeded)
+│   │   │   ├── matches.py      # CRUD /api/matches + scoring + events
 │   │   │   ├── tournaments.py  # CRUD /api/tournaments + registration
 │   │   │   └── dashboard.py    # GET /api/dashboard/stats|recent-*
-│   │   ├── schemas/
-│   │   │   └── schemas.py      # Pydantic request/response models
-│   │   └── main.py             # FastAPI app + serves frontend
-│   ├── run.py                  # Entry point: python run.py
+│   │   ├── schemas/schemas.py  # Pydantic request/response models
+│   │   └── main.py             # FastAPI app + serves SPA + global logging
+│   ├── run.py                  # Local entry point (port 8765)
 │   ├── requirements.txt
-│   └── .env.example
+│   └── alembic.ini             # Reserved for future migrations
 ├── static/
-│   └── index.html              # Complete SPA (no build step!)
-└── setup_db.sql                # MySQL setup script
+│   └── index.html              # Complete SPA — no build step
+├── logs/                       # Runtime logs
+├── passenger_wsgi.py           # BigRock shared hosting entry (WSGI ↔ ASGI)
+├── setup_db.sql                # Optional MySQL setup script
+├── slms.db                     # Default SQLite database (auto-created)
+└── 01-command.txt              # Local + deployment cheat sheet
 ```
 
 ---
 
-## 🚀 Quick Setup (5 steps)
+## 🚀 Local Setup
 
-### Step 1 — MySQL Database
-
-```bash
-# As MySQL root:
-mysql -u root -p < setup_db.sql
-```
-
-Or manually:
-```sql
-CREATE DATABASE slms_db CHARACTER SET utf8mb4;
-CREATE USER 'slms_user'@'localhost' IDENTIFIED BY 'YourPassword';
-GRANT ALL PRIVILEGES ON slms_db.* TO 'slms_user'@'localhost';
-FLUSH PRIVILEGES;
-```
-
----
-
-### Step 2 — Python Environment
+### Step 1 — Python environment
 
 ```bash
-cd slms/backend
-
-# Create virtual environment
+cd backend
 python -m venv venv
 
-# Activate it
-# On Windows:
+# Windows
 venv\Scripts\activate
-# On Linux/Mac:
+# Linux/Mac
 source venv/bin/activate
 
-# Install dependencies
 pip install -r requirements.txt
 ```
 
----
+### Step 2 — (Optional) configure `.env`
 
-### Step 3 — Configure Environment
+SQLite works with **zero config** — `slms.db` is created at the project root on
+first run. Create `backend/.env` only if you want to override defaults or
+switch to MySQL.
 
-```bash
-cp .env.example .env
-```
-
-Edit `.env`:
 ```env
 APP_ENV=development
-SECRET_KEY=your-very-long-random-secret-key-here
-JWT_SECRET_KEY=another-long-random-jwt-secret-here
+SECRET_KEY=your-very-long-random-secret
+JWT_SECRET_KEY=another-long-random-jwt-secret
 
-DB_HOST=localhost
-DB_PORT=3306
-DB_NAME=slms_db
-DB_USER=slms_user
-DB_PASSWORD=YourPassword
+# Default is sqlite; uncomment to switch:
+# DB_TYPE=mysql
+# DB_HOST=localhost
+# DB_PORT=3306
+# DB_NAME=slms_db
+# DB_USER=slms_user
+# DB_PASSWORD=YourPassword
 ```
-To switch to mysql
-```env
-DB_TYPE=mysql
-DB_HOST=localhost
-DB_NAME=slms_db
-DB_USER=slms_user
-DB_PASSWORD=yourpassword
----
 
-### Step 4 — Run
+For MySQL, optionally run `setup_db.sql` as root first.
+
+### Step 3 — Run
 
 ```bash
-cd slms/backend
+cd backend
 python run.py
 ```
 
-That's it! Visit: **http://localhost:8000**
+Open: **http://localhost:8765**
 
-- **Frontend (SPA):**  http://localhost:8000
-- **API Docs:**        http://localhost:8000/api/docs
-- **Health Check:**    http://localhost:8000/api/health
+- **Frontend (SPA):**  http://localhost:8765
+- **API docs:**        http://localhost:8765/api/docs
+- **Health check:**    http://localhost:8765/api/health
 
----
+### Step 4 — First login
 
-### Step 5 — First Login
-
-1. Open http://localhost:8000
-2. Click **"Register"** to create your first account
-3. Use role `super_admin` for full access
-4. Or via API directly:
+Register at `/` (use role `super_admin` for full access) or via API:
 
 ```bash
-curl -X POST http://localhost:8000/api/auth/register \
+curl -X POST http://localhost:8765/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "email": "admin@slms.com",
@@ -141,7 +116,83 @@ curl -X POST http://localhost:8000/api/auth/register \
 
 ---
 
-## 🏅 Supported Sports (18+)
+## 🌐 Production Deployment (BigRock shared hosting)
+
+The app is deployed on BigRock shared hosting — **not** a VPS. The bridge is:
+
+```
+Browser → Apache → Phusion Passenger (WSGI) → a2wsgi → FastAPI (ASGI)
+```
+
+cPanel's system Python is too old for FastAPI, so a **pre-compiled Python
+3.12** lives in a local venv at `~/sports-league/.venv`. `passenger_wsgi.py`
+detects the wrong interpreter and `os.execv`s into the 3.12 venv before any
+modern syntax loads.
+
+### Deploy cycle
+
+```bash
+# 1. Upload changes
+scp -r * amitawn2@69.49.227.12:/home3/amitawn2/sports-league
+
+# 2. Restart Passenger to pick up the new code
+ssh amitawn2@69.49.227.12
+touch ~/sports-league/tmp/restart.txt
+```
+
+### First-time / new dependency setup on the server
+
+```bash
+ssh amitawn2@69.49.227.12
+cd /home3/amitawn2/sports-league
+python3 -m venv .venv                          # only once
+source ~/sports-league/.venv/bin/activate
+cd backend
+pip install --prefer-binary -r requirements.txt
+touch ~/sports-league/tmp/restart.txt
+```
+
+### Verifying the server is running the right interpreter
+
+```bash
+cat /tmp/py_check.txt
+# Should show: Executable: /home3/amitawn2/sports-league/.venv/bin/python3.12
+```
+
+### Switch cPanel → Application Manager → "Production" once stable
+(more secure than Development mode).
+
+### Shared-hosting constraints to remember
+
+These shape what features can/can't be built:
+
+- ❌ **No custom ports** — firewall blocks them. Everything goes through Apache on 80/443.
+- ❌ **No always-on background workers** — shared hosting kills daemons. Use cPanel cron for scheduling.
+- ⚠️ **No native WebSockets** — Passenger/WSGI doesn't speak WS. Real-time scoring (Phase 6) will need polling or SSE.
+- ❌ **No system-level installs** (Redis, Celery broker). Stick to pure-Python deps installable via pip.
+- ⚠️ **No persistent in-memory state** — Passenger may restart the worker between requests.
+- ✅ **`passenger_wsgi.py` bootstrap must stay Python-2-safe** (`%s` formatting only) until `os.execv` switches to Python 3.12.
+
+If a feature truly needs WebSockets, Redis, or a long-running worker, that's
+the signal to migrate to a VPS — until then, design within these limits.
+
+### Password reset (server-side)
+
+```bash
+cd backend
+python - <<'PY'
+from app.core.security import hash_password
+from app.core.database import execute_query
+
+new_hash = hash_password("acbd1234")
+execute_query("UPDATE users SET password_hash = ? WHERE email = ?", (new_hash, "thamit1@gmail.com"))
+print("Password reset done")
+PY
+```
+
+---
+
+## 🏅 Supported Sports (18+, auto-seeded)
 
 | Category   | Sports                                          |
 |------------|-------------------------------------------------|
@@ -151,7 +202,7 @@ curl -X POST http://localhost:8000/api/auth/register \
 | Aquatic    | Swimming, Rowing                                |
 | Other      | Chess, Carrom, Foosball                         |
 
-Sports are **auto-seeded** on first API call to `/api/sports`.
+Sports auto-seed on first call to `/api/sports`.
 
 ---
 
@@ -170,6 +221,8 @@ Sports are **auto-seeded** on first API call to `/api/sports`.
 
 ## 📡 Key API Endpoints
 
+Full interactive docs at **/api/docs** (Swagger) and **/api/redoc**.
+
 ### Auth
 | Method | Endpoint               | Description        |
 |--------|------------------------|--------------------|
@@ -177,60 +230,19 @@ Sports are **auto-seeded** on first API call to `/api/sports`.
 | POST   | /api/auth/login        | Login, get JWT     |
 | GET    | /api/auth/me           | Current user info  |
 
-### Clubs
-| Method | Endpoint               | Description         |
-|--------|------------------------|---------------------|
-| GET    | /api/clubs             | List all clubs      |
-| POST   | /api/clubs             | Create club (admin) |
-| GET    | /api/clubs/{id}        | Get club details    |
-| PATCH  | /api/clubs/{id}        | Update club         |
+### Clubs / Players / Teams / Matches / Tournaments / Dashboard
+CRUD endpoints exist for all of the above. Highlights:
 
-### Players
-| Method | Endpoint               | Description                    |
-|--------|------------------------|--------------------------------|
-| GET    | /api/players           | List players (search, filter)  |
-| GET    | /api/players/{id}      | Player profile                 |
-| PATCH  | /api/players/{id}      | Update player                  |
-| GET    | /api/players/{id}/clubs| Player's club memberships      |
+- `PATCH /api/matches/{id}/score` — live score updates
+- `POST  /api/matches/{id}/events` — log goals/cards/etc.
+- `POST  /api/tournaments/{id}/register` — register a team
+- `GET   /api/dashboard/stats` — platform-wide counts
+- `GET   /api/dashboard/recent-matches` / `recent-tournaments`
 
-### Teams
-| Method | Endpoint                       | Description           |
-|--------|--------------------------------|-----------------------|
-| GET    | /api/teams                     | List teams            |
-| POST   | /api/teams                     | Create team           |
-| GET    | /api/teams/{id}                | Team details          |
-| GET    | /api/teams/{id}/members        | Roster                |
-| POST   | /api/teams/{id}/members        | Add player to roster  |
-| DELETE | /api/teams/{id}/members/{pid}  | Remove from roster    |
-
-### Matches
-| Method | Endpoint                    | Description             |
-|--------|-----------------------------|-------------------------|
-| GET    | /api/matches                | List (filter by status) |
-| POST   | /api/matches                | Schedule match          |
-| GET    | /api/matches/{id}           | Match details           |
-| PATCH  | /api/matches/{id}/score     | Update score/status     |
-| GET    | /api/matches/{id}/events    | Event log               |
-| POST   | /api/matches/{id}/events    | Log event               |
-
-### Tournaments
-| Method | Endpoint                         | Description          |
-|--------|----------------------------------|----------------------|
-| GET    | /api/tournaments                 | List all             |
-| POST   | /api/tournaments                 | Create               |
-| GET    | /api/tournaments/{id}            | Details              |
-| POST   | /api/tournaments/{id}/register   | Register team        |
-| GET    | /api/tournaments/{id}/teams      | Registered teams     |
-| PATCH  | /api/tournaments/{id}/status     | Update status        |
-
-### Dashboard
-| Method | Endpoint                          | Description          |
-|--------|-----------------------------------|----------------------|
-| GET    | /api/dashboard/stats              | Platform-wide counts |
-| GET    | /api/dashboard/recent-matches     | Last 5 matches       |
-| GET    | /api/dashboard/recent-tournaments | Last 5 tournaments   |
-
-Full interactive docs always available at: **http://localhost:8000/api/docs**
+### System
+| Method | Endpoint        | Description     |
+|--------|-----------------|-----------------|
+| GET    | /api/health     | Liveness probe  |
 
 ---
 
@@ -240,34 +252,40 @@ Full interactive docs always available at: **http://localhost:8000/api/docs**
 Club ──< User (players, admins)
 Club ──< Team ──< TeamMember >── User
 Sport ──< Team
-Sport ──< Match
+Sport ──< Match ──< MatchEvent
 Sport ──< Tournament ──< TournamentRegistration >── Team
 Tournament ──< Match
-Match ──< MatchEvent
-User ──< PlayerMembership >── Club  (multi-club support)
+User ──< PlayerMembership >── Club   (multi-club support)
 ```
+
+Tables auto-create on startup via `init_db()`. `alembic.ini` is present for
+future migration work but not actively driving schema changes yet.
 
 ---
 
-## 🔧 Upgrading / Extending
+## ✅ What's Done (current MVP)
 
-### Add a new sport
-```python
-# In backend/app/routers/sports.py, add to DEFAULT_SPORTS:
-{"name": "Kabaddi", "category": "team", "max_team_size": 7, "min_team_size": 7, "icon": "🤸"}
-```
+- [x] FastAPI backend with 8 routers, JWT auth, bcrypt hashing
+- [x] SQLite default + MySQL support via env flag
+- [x] Single-file SPA frontend served by FastAPI ([static/index.html](static/index.html))
+- [x] Auto-seeded sports catalog (18 sports)
+- [x] CRUD for clubs, players, teams, matches, tournaments
+- [x] Match scoring + event log
+- [x] Tournament registration flow
+- [x] Dashboard stats endpoints
+- [x] Role-based permissions (6 roles)
+- [x] Global request logging + unhandled-exception handler
+- [x] Deployed to BigRock shared hosting via Passenger + a2wsgi
 
-### Add a new API endpoint
-1. Create/edit a file in `backend/app/routers/`
-2. Register it in `backend/app/main.py`
-3. Add the frontend UI section in `static/index.html`
+## 📌 Planned Next Phases
 
-### Production deployment
-```bash
-# Use gunicorn with uvicorn workers
-pip install gunicorn
-gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
-```
+- [ ] **Phase 2:** Gamification (points, badges, leaderboards)
+- [ ] **Phase 3:** Media uploads (player photos, club logos) — needs disk-quota planning on shared hosting
+- [ ] **Phase 4:** Federation management (cross-club events)
+- [ ] **Phase 5:** Advanced analytics & reporting
+- [ ] **Phase 6:** ~~Real-time scoring via WebSockets~~ → **SSE or polling** (WebSockets not viable under Passenger)
+- [ ] **Phase 7:** Mobile-optimised PWA
+- [ ] **Future:** Alembic-driven migrations once the schema stabilises
 
 ---
 
@@ -275,23 +293,13 @@ gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
 
 | Issue | Fix |
 |-------|-----|
-| `ModuleNotFoundError` | Activate venv: `source venv/bin/activate` |
-| `Access denied for user` | Check DB credentials in `.env` |
-| `Table doesn't exist` | Tables auto-create on startup. Check DB connection. |
+| `ModuleNotFoundError` locally | Activate venv: `source venv/bin/activate` |
+| `Table doesn't exist` | Tables auto-create on startup; check DB connection |
 | `401 Unauthorized` | Token expired — log in again |
-| Port 8000 in use | Change port in `run.py`: `port=8080` |
+| Port 8765 in use | Change in [backend/run.py](backend/run.py) |
+| Server change not showing up | You forgot `touch ~/sports-league/tmp/restart.txt` |
+| Server import errors | `cat /tmp/py_check.txt` — confirm `.venv/bin/python3.12` is being used |
 
 ---
 
-## 📌 Planned Next Phases
-
-- [ ] Phase 2: Gamification (points, badges, leaderboards)
-- [ ] Phase 3: Media uploads (player photos, club logos)
-- [ ] Phase 4: Federation management (cross-club events)
-- [ ] Phase 5: Advanced analytics & reporting
-- [ ] Phase 6: Real-time scoring via WebSockets
-- [ ] Phase 7: Mobile-optimised PWA
-
----
-
-Built with ❤️ — FastAPI · SQLAlchemy · MySQL · Vanilla JS
+Built with ❤️ — FastAPI · SQLAlchemy · SQLite/MySQL · Vanilla JS · Phusion Passenger
