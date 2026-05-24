@@ -7,6 +7,19 @@ import json
 router = APIRouter()
 
 
+def _safe_json(value):
+    if value is None:
+        return None
+    if isinstance(value, (dict, list)):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (TypeError, ValueError):
+            return value
+    return value
+
+
 @router.get("/stats")
 def global_stats(_=Depends(get_current_user)):
     clubs_count = execute_query(
@@ -71,8 +84,8 @@ def recent_matches(limit: int = 5, _=Depends(get_current_user)):
             "sport": m['sport_name'],
             "team_a": m['team_a_name'],
             "team_b": m['team_b_name'],
-            "score_a": json.loads(m['score_a']) if m['score_a'] else None,
-            "score_b": json.loads(m['score_b']) if m['score_b'] else None,
+            "score_a": _safe_json(m['score_a']),
+            "score_b": _safe_json(m['score_b']),
             "status": m['status'],
             "scheduled_at": m['scheduled_at'],
         }
