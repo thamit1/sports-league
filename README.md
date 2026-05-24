@@ -184,7 +184,7 @@ python - <<'PY'
 from app.core.security import hash_password
 from app.core.database import execute_query
 
-new_hash = hash_password("acbd1234")
+new_hash = hash_password("abcdef1234")
 execute_query("UPDATE users SET password_hash = ? WHERE email = ?", (new_hash, "thamit1@gmail.com"))
 print("Password reset done")
 PY
