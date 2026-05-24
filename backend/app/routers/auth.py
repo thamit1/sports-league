@@ -28,8 +28,8 @@ def register(payload: RegisterRequest):
     global_player_id = f"SLMS-{uuid.uuid4().hex[:8].upper()}"
     user_id = execute_query(
         """INSERT INTO users
-           (email, password_hash, first_name, last_name, phone, role, club_id, global_player_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+           (email, password_hash, first_name, last_name, phone, role, club_id, global_player_id, is_active, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)""",
         (
             payload.email,
             hash_password(payload.password),

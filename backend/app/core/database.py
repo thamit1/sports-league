@@ -117,6 +117,15 @@ def init_db():
         logger.info("Normalizing existing password_reset_required values")
         cursor.execute("UPDATE users SET password_reset_required = 0 WHERE password_reset_required IS NULL")
 
+        # Ensure legacy rows do not contain NULL is_active values
+        logger.info("Normalizing existing is_active values")
+        cursor.execute("UPDATE users SET is_active = 1 WHERE is_active IS NULL")
+
+        # Ensure legacy rows do not contain NULL timestamps
+        logger.info("Normalizing existing created_at/updated_at values")
+        cursor.execute("UPDATE users SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL")
+        cursor.execute("UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL")
+
         # Clubs table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS clubs (

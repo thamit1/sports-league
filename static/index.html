@@ -197,8 +197,15 @@ const API = {
       return;
     }
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || 'Request failed');
+      let err = {};
+      const text = await res.text().catch(() => '');
+      try {
+        err = text ? JSON.parse(text) : {};
+      } catch {
+        err = { detail: text };
+      }
+      const message = err.detail || err.message || (typeof err === 'string' ? err : '') || res.statusText || 'Request failed';
+      throw new Error(message);
     }
     if (res.status === 204) return null;
     return res.json();
@@ -300,6 +307,11 @@ function closeModal(id) {
   // reset form inside
   const f = m && m.querySelector('form');
   if (f) f.reset();
+  const err = m && m.querySelector('.alert');
+  if (err) {
+    err.style.display = 'none';
+    err.textContent = '';
+  }
 }
 function modalHTML(id, title, bodyHTML, footerHTML = '') {
   return `
@@ -603,6 +615,7 @@ async function renderPlayers() {
   </div>
   ${modalHTML('add-player-modal','Add Player',`
     <form id="add-player-form">
+      <div id="add-player-error" class="alert alert-error" style="display:none;margin-bottom:12px"></div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">First Name</label><input class="form-control" id="ap-fn" required/></div>
         <div class="form-group"><label class="form-label">Last Name</label><input class="form-control" id="ap-ln" required/></div>
@@ -627,6 +640,12 @@ async function renderPlayers() {
 }
 
 async function submitAddPlayer() {
+  const errorEl = document.getElementById('add-player-error');
+  if (errorEl) {
+    errorEl.style.display = 'none';
+    errorEl.textContent = '';
+  }
+
   try {
     await API.post('/players/', {
       first_name: document.getElementById('ap-fn').value,
@@ -639,7 +658,14 @@ async function submitAddPlayer() {
     closeModal('add-player-modal');
     showAlert('Player added successfully!', 'success');
     navigate('players');
-  } catch(e) { showAlert(e.message); }
+  } catch(e) {
+    const message = e?.message || 'Failed to add player';
+    if (errorEl) {
+      errorEl.textContent = message;
+      errorEl.style.display = 'block';
+    }
+    showAlert(message);
+  }
 }
 
 // ─── Player Detail ────────────────────────────────────────────────
