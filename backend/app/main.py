@@ -1,13 +1,20 @@
 import pathlib
-from fastapi import FastAPI
+import time
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from app.core.config import settings
 from app.core.database import init_db
+from app.core.logging import configure_logging, logger
 from app.routers import auth, clubs, players, teams, sports, matches, tournaments, dashboard
 
+configure_logging()
+logger.info("Starting Sports League Management System")
+
 # Initialize database
+logger.debug("Initializing database schema")
 init_db()
+logger.info("Database initialization complete")
 
 app = FastAPI(
     title="Sports League Management System",
@@ -25,6 +32,29 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    logger.info("Incoming request: %s %s", request.method, request.url.path)
+    response = await call_next(request)
+    elapsed = (time.time() - start_time) * 1000
+    logger.info(
+        "Completed request: %s %s -> %s in %.2fms",
+        request.method,
+        request.url.path,
+        response.status_code,
+        elapsed,
+    )
+    return response
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled exception for request %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
 
 # ─── API Routers ──────────────────────────────────────────────────
 app.include_router(auth.router,        prefix="/api/auth",        tags=["Auth"])

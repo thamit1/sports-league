@@ -187,7 +187,15 @@ const API = {
     if (State.token) opts.headers['Authorization'] = 'Bearer ' + State.token;
     if (body) opts.body = JSON.stringify(body);
     const res = await fetch(url, opts);
-    if (res.status === 401) { logout(); return; }
+    if (res.status === 401) {
+      const err = await res.json().catch(() => ({}));
+      const isAuthAction = path.startsWith('/auth/login') || path.startsWith('/auth/register');
+      if (isAuthAction || !State.token) {
+        throw new Error(err.detail || 'Invalid credentials');
+      }
+      logout();
+      return;
+    }
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.detail || 'Request failed');
@@ -334,6 +342,9 @@ function bindLogin() {
     const btn = document.getElementById('l-btn');
     btn.disabled = true; btn.textContent = 'Signing in…';
     const alert = document.getElementById('login-alert');
+    alert.style.display = 'none';
+    alert.textContent = '';
+    alert.className = '';
     try {
       const data = await API.post('/auth/login', {
         email: document.getElementById('l-email').value,

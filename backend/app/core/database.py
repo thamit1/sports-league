@@ -1,9 +1,12 @@
 import sqlite3
 import json
+import logging
 from contextlib import contextmanager
 from typing import Optional, List, Dict, Any
 from app.core.config import settings
 from datetime import datetime
+
+logger = logging.getLogger("slms.db")
 
 DB_PATH = settings.DATABASE_URL.replace("sqlite:///", "")
 
@@ -40,6 +43,7 @@ def execute_query(query: str, params: tuple = (), fetch_one: bool = False, fetch
         fetch_all: Return all rows
         return_lastid: Return last inserted row ID
     """
+    logger.debug("Executing query: %s | params=%s", query.strip(), params)
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(query, params)
@@ -47,21 +51,27 @@ def execute_query(query: str, params: tuple = (), fetch_one: bool = False, fetch
         if fetch_one:
             result = cursor.fetchone()
             conn.commit()
+            logger.debug("Query returned one row")
             return result
         elif fetch_all:
             result = cursor.fetchall()
             conn.commit()
+            logger.debug("Query returned %s rows", len(result))
             return result
         elif return_lastid:
             conn.commit()
+            logger.debug("Query inserted row id=%s", cursor.lastrowid)
             return cursor.lastrowid
         else:
+            rowcount = cursor.rowcount
             conn.commit()
-            return cursor.rowcount
+            logger.debug("Query affected %s rows", rowcount)
+            return rowcount
 
 
 def init_db():
     """Initialize database schema."""
+    logger.info("Initializing SQLite database at %s", DB_PATH)
     with get_db() as conn:
         cursor = conn.cursor()
 
