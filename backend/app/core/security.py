@@ -64,7 +64,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         password_hash=user_data['password_hash'],
         first_name=user_data['first_name'],
         last_name=user_data['last_name'],
-        role=user_data['role'],
+        role=(user_data['role'] or '').lower(),
         club_id=user_data['club_id'],
         global_player_id=user_data['global_player_id'],
         avatar_url=user_data['avatar_url'],
@@ -72,6 +72,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         gender=user_data['gender'],
         is_active=user_data['is_active'],
         is_verified=user_data['is_verified'],
+        password_reset_required=bool(user_data.get('password_reset_required', 0)),
         created_at=user_data['created_at'],
         updated_at=user_data['updated_at'],
     )

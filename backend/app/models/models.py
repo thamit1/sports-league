@@ -58,6 +58,7 @@ class User:
     gender: Optional[str] = None
     is_active: bool = True
     is_verified: bool = False
+    password_reset_required: bool = False
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 

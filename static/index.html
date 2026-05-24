@@ -268,6 +268,18 @@ function initials(u) {
   return ((u.first_name||'')[0]||'') + ((u.last_name||'')[0]||'');
 }
 
+function isViewer() {
+  return (State.user?.role || '').toLowerCase() === 'viewer';
+}
+
+function isAdmin() {
+  return ['super_admin', 'club_admin'].includes((State.user?.role || '').toLowerCase());
+}
+
+function isSuperAdmin() {
+  return (State.user?.role || '').toLowerCase() === 'super_admin';
+}
+
 function showAlert(msg, type = 'error') {
   const a = document.getElementById('global-alert');
   if (!a) return;
@@ -354,12 +366,57 @@ function bindLogin() {
       localStorage.setItem('slms_user', JSON.stringify(data.user));
       State.token = data.access_token;
       State.user  = data.user;
-      navigate('dashboard');
+      if (data.user.password_reset_required) {
+        navigate('change-password');
+      } else {
+        navigate('dashboard');
+      }
     } catch (err) {
       alert.className = 'alert alert-error';
       alert.textContent = err.message;
       alert.style.display = 'block';
       btn.disabled = false; btn.textContent = 'Sign in';
+    }
+  });
+}
+
+function renderChangePassword() {
+  const requiresOld = !State.user.password_reset_required;
+  return `
+  <div class="page-header">
+    <div>
+      <div class="page-title">Change Password</div>
+      <div class="page-sub">${State.user.password_reset_required ? 'You must set a new password before continuing.' : 'Update your password.'}</div>
+    </div>
+  </div>
+  <div class="card" style="max-width:520px;margin:0 auto">
+    ${State.user.password_reset_required ? '<div class="alert alert-info">Password reset is required. Please choose a new password to continue.</div>' : ''}
+    <form id="change-password-form">
+      ${requiresOld ? `<div class="form-group"><label class="form-label">Current Password</label><input class="form-control" type="password" id="cp-old" required/></div>` : ''}
+      <div class="form-group"><label class="form-label">New Password</label><input class="form-control" type="password" id="cp-new" required/></div>
+      <button class="btn btn-primary" type="submit" id="cp-btn">Update Password</button>
+    </form>
+  </div>`;
+}
+
+function bindChangePassword() {
+  document.getElementById('change-password-form')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = document.getElementById('cp-btn');
+    btn.disabled = true; btn.textContent = 'Updating…';
+    try {
+      const payload = { new_password: document.getElementById('cp-new').value };
+      if (!State.user.password_reset_required) {
+        payload.old_password = document.getElementById('cp-old').value;
+      }
+      await API.post('/auth/change-password', payload);
+      State.user.password_reset_required = false;
+      localStorage.setItem('slms_user', JSON.stringify(State.user));
+      showAlert('Password updated successfully', 'success');
+      navigate('dashboard');
+    } catch (err) {
+      showAlert(err.message, 'error');
+      btn.disabled = false; btn.textContent = 'Update Password';
     }
   });
 }
@@ -508,7 +565,10 @@ async function renderDashboard() {
 async function renderPlayers() {
   const search = State.pageParams?.search || '';
   let players = [];
-  try { players = await API.get('/players', { search: search || undefined, limit: 100 }); } catch(e) {}
+  let loadError = null;
+  try { players = await API.get('/players/', { search: search || undefined, limit: 100 }); } catch(e) {
+    loadError = e.message;
+  }
 
   const rows = players.map(p => `
     <tr class="clickable" onclick="navigate('player-detail',{id:${p.id}})">
@@ -528,8 +588,9 @@ async function renderPlayers() {
   return `
   <div class="page-header">
     <div><div class="page-title">Players</div><div class="page-sub">${players.length} registered players</div></div>
-    <button class="btn btn-primary" onclick="openModal('add-player-modal')">+ Add Player</button>
+    ${!isViewer() ? `<button class="btn btn-primary" onclick="openModal('add-player-modal')">+ Add Player</button>` : ''}
   </div>
+  ${loadError ? `<div class="alert alert-error" style="margin-bottom:16px">${loadError}</div>` : ''}
   <div class="search-bar">
     <input class="search-input" id="player-search" placeholder="Search by name, email or ID…" value="${search}"
       oninput="debounce(()=>navigate('players',{search:this.value}),400)()"/>
@@ -567,7 +628,7 @@ async function renderPlayers() {
 
 async function submitAddPlayer() {
   try {
-    await API.post('/auth/register', {
+    await API.post('/players/', {
       first_name: document.getElementById('ap-fn').value,
       last_name:  document.getElementById('ap-ln').value,
       email:      document.getElementById('ap-email').value,
@@ -603,6 +664,7 @@ async function renderPlayerDetail() {
         <div style="margin-top:20px;text-align:left;space-y:8px">
           <div style="margin-bottom:8px"><span style="font-size:11px;font-weight:600;color:var(--gray-500)">EMAIL</span><div style="font-size:13px">${player.email||'—'}</div></div>
           <div style="margin-bottom:8px"><span style="font-size:11px;font-weight:600;color:var(--gray-500)">GENDER</span><div style="font-size:13px">${player.gender||'—'}</div></div>
+          <div style="margin-bottom:8px"><span style="font-size:11px;font-weight:600;color:var(--gray-500)">PASSWORD RESET</span><div style="font-size:13px">${player.password_reset_required ? 'Required' : 'Not required'}</div></div>
           <div><span style="font-size:11px;font-weight:600;color:var(--gray-500)">JOINED</span><div style="font-size:13px">${fmtDate(player.created_at)}</div></div>
         </div>
       </div>
@@ -615,7 +677,66 @@ async function renderPlayerDetail() {
         </tbody></table>` : '<div class="empty-state"><div class="icon">🏢</div><p>Not a member of any club yet</p></div>'}
       </div>
     </div>
-  </div>`;
+  </div>
+  ${isAdmin() ? `
+  <div class="card" style="max-width:640px;margin:24px auto 0">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div style="font-weight:700;font-size:15px">Admin Controls</div>
+      ${isSuperAdmin() ? `<button class="btn btn-danger btn-sm" onclick="requirePasswordReset(${player.id})">Force Password Reset</button>` : ''}
+    </div>
+    <div class="form-group">
+      <label class="form-label">Role</label>
+      <select class="form-control" id="admin-role">
+        ${['viewer','player','official','club_manager','club_admin','super_admin'].map(role => `
+          <option value="${role}" ${player.role===role ? 'selected':''}>${role.replace(/_/g,' ')}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Temporary password</label>
+      <input type="text" class="form-control" id="admin-temporary-password" placeholder="Enter temporary password">
+      <small class="form-text text-muted">Set a temporary password and require the user to change it on next login.</small>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Password reset required</label>
+      <select class="form-control" id="admin-password-reset">
+        <option value="0" ${player.password_reset_required ? '' : 'selected'}>No</option>
+        <option value="1" ${player.password_reset_required ? 'selected' : ''}>Yes</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="saveUserAdminChanges(${player.id})">Save changes</button>
+  </div>` : ''}
+`;
+}
+
+async function requirePasswordReset(userId) {
+  try {
+    await API.patch(`/auth/users/${userId}`, { password_reset_required: true });
+    showAlert('Password reset required for this user.', 'success');
+    navigate('player-detail', { id: userId });
+  } catch (e) {
+    showAlert(e.message);
+  }
+}
+
+async function saveUserAdminChanges(userId) {
+  try {
+    const temporaryPassword = document.getElementById('admin-temporary-password')?.value?.trim();
+    const payload = {
+      role: document.getElementById('admin-role').value,
+      password_reset_required: document.getElementById('admin-password-reset').value === '1',
+    };
+    if (temporaryPassword) payload.temporary_password = temporaryPassword;
+    const updated = await API.patch(`/auth/users/${userId}`, payload);
+    showAlert('User updated successfully.', 'success');
+    if (updated.id === State.user.id) {
+      State.user.role = updated.role;
+      State.user.password_reset_required = updated.password_reset_required;
+      localStorage.setItem('slms_user', JSON.stringify(State.user));
+    }
+    navigate('player-detail', { id: userId });
+  } catch (e) {
+    showAlert(e.message);
+  }
 }
 
 // ─── Teams Page ───────────────────────────────────────────────────
@@ -694,7 +815,7 @@ async function renderTeamDetail() {
     [team, members, players, sports] = await Promise.all([
       API.get(`/teams/${id}`),
       API.get(`/teams/${id}/members`),
-      API.get('/players', { limit: 200 }),
+      API.get('/players/', { limit: 200 }),
       API.get('/sports'),
     ]);
   } catch(e) {}
@@ -1344,6 +1465,10 @@ async function render() {
     return;
   }
 
+  if (State.user.password_reset_required && State.currentPage !== 'change-password') {
+    State.currentPage = 'change-password';
+  }
+
   // Show loading shell first
   root.innerHTML = renderShell('<div class="loading-page"><div class="spinner"></div></div>');
 
@@ -1353,6 +1478,7 @@ async function render() {
       case 'dashboard':         pageHTML = await renderDashboard();        break;
       case 'players':           pageHTML = await renderPlayers();          break;
       case 'player-detail':     pageHTML = await renderPlayerDetail();     break;
+      case 'change-password':    pageHTML = await renderChangePassword();  break;
       case 'teams':             pageHTML = await renderTeams();            break;
       case 'team-detail':       pageHTML = await renderTeamDetail();       break;
       case 'matches':           pageHTML = await renderMatches();          break;
@@ -1369,6 +1495,9 @@ async function render() {
 
   // Re-render with full content
   root.innerHTML = renderShell(pageHTML);
+  if (State.currentPage === 'change-password') {
+    bindChangePassword();
+  }
 
   // Mobile menu button visibility
   const menuBtn = document.getElementById('menu-btn');

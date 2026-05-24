@@ -19,6 +19,15 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
+class PlayerCreate(BaseModel):
+    email: EmailStr
+    password: str
+    first_name: str
+    last_name: str
+    phone: Optional[str] = None
+    club_id: Optional[int] = None
+    role: UserRole = UserRole.VIEWER
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -40,6 +49,7 @@ class UserOut(BaseModel):
     gender: Optional[str]
     is_active: bool
     is_verified: bool
+    password_reset_required: bool = False
     created_at: datetime
 
     class Config:
@@ -56,6 +66,22 @@ class UserUpdate(BaseModel):
     avatar_url: Optional[str] = None
     date_of_birth: Optional[date] = None
     gender: Optional[str] = None
+
+class UserAdminUpdate(BaseModel):
+    role: Optional[UserRole] = None
+    temporary_password: Optional[str] = None
+    password_reset_required: Optional[bool] = None
+    is_active: Optional[bool] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone: Optional[str] = None
+    avatar_url: Optional[str] = None
+    date_of_birth: Optional[date] = None
+    gender: Optional[str] = None
+
+class PasswordChangeRequest(BaseModel):
+    new_password: str
+    old_password: Optional[str] = None
 
 
 # ─── Club ─────────────────────────────────────────────────────────────────────

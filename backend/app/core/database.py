@@ -19,6 +19,11 @@ def dict_factory(cursor, row):
     return d
 
 
+def table_has_column(conn, table: str, column: str) -> bool:
+    cursor = conn.execute(f"PRAGMA table_info({table})")
+    return any(row['name'] == column for row in cursor.fetchall())
+
+
 @contextmanager
 def get_db():
     """Context manager for database connection."""
@@ -92,11 +97,25 @@ def init_db():
                 gender TEXT,
                 is_active BOOLEAN DEFAULT 1,
                 is_verified BOOLEAN DEFAULT 0,
+                password_reset_required BOOLEAN DEFAULT 0,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (club_id) REFERENCES clubs(id)
             )
         """)
+
+        # Ensure existing databases gain the password_reset_required column
+        if not table_has_column(conn, 'users', 'password_reset_required'):
+            logger.info("Adding missing users.password_reset_required column")
+            cursor.execute("ALTER TABLE users ADD COLUMN password_reset_required BOOLEAN DEFAULT 0")
+
+        # Normalize any legacy role values to lowercase so enum validation stays consistent
+        logger.info("Normalizing existing user roles to lowercase")
+        cursor.execute("UPDATE users SET role = lower(role) WHERE role IS NOT NULL")
+
+        # Ensure legacy rows do not contain NULL password_reset_required values
+        logger.info("Normalizing existing password_reset_required values")
+        cursor.execute("UPDATE users SET password_reset_required = 0 WHERE password_reset_required IS NULL")
 
         # Clubs table
         cursor.execute("""
