@@ -9,6 +9,7 @@ import json
 router = APIRouter()
 
 
+@router.get("", response_model=List[ClubOut])
 @router.get("/", response_model=List[ClubOut])
 def list_clubs(_=Depends(get_current_user)):
     clubs_rows = execute_query(
@@ -32,6 +33,7 @@ def list_clubs(_=Depends(get_current_user)):
     ) for c in clubs_rows]
 
 
+@router.post("", response_model=ClubOut, status_code=201)
 @router.post("/", response_model=ClubOut, status_code=201)
 def create_club(
     payload: ClubCreate,
@@ -47,8 +49,8 @@ def create_club(
 
     club_data = payload.model_dump()
     club_id = execute_query(
-        """INSERT INTO clubs (name, code, short_name, description, logo_url, primary_color, secondary_color, city, country, is_active)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO clubs (name, code, short_name, description, logo_url, primary_color, secondary_color, city, country, is_active, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)""",
         (
             club_data.get('name'),
             club_data.get('code'),

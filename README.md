@@ -230,14 +230,31 @@ Full interactive docs at **/api/docs** (Swagger) and **/api/redoc**.
 | POST   | /api/auth/login        | Login, get JWT     |
 | GET    | /api/auth/me           | Current user info  |
 
-### Clubs / Players / Teams / Matches / Tournaments / Dashboard
-CRUD endpoints exist for all of the above. Highlights:
+### Clubs / Players / Teams / Matches / Tournaments / Sports / Dashboard
+
+Full CRUD on every entity. Soft-delete semantics (`is_active = 0` or
+`status = 'cancelled'`) so historical references stay intact.
+
+Highlights:
 
 - `PATCH /api/matches/{id}/score` — live score updates
+- `PATCH /api/matches/{id}` — general edit (sport, teams, schedule, venue, status, round, notes)
+- `DELETE /api/matches/{id}` — soft-cancel (sets `status = 'cancelled'`)
 - `POST  /api/matches/{id}/events` — log goals/cards/etc.
+- `PATCH /api/teams/{id}` / `DELETE /api/teams/{id}` — edit / deactivate
+- `PATCH /api/clubs/{id}` / `DELETE /api/clubs/{id}` — edit / deactivate
+- `PATCH /api/tournaments/{id}` / `DELETE /api/tournaments/{id}` — edit / soft-cancel
 - `POST  /api/tournaments/{id}/register` — register a team
+- `DELETE /api/tournaments/{id}/teams/{team_id}` — unregister (hard-delete on join row)
+- `POST  /api/sports` / `PATCH /api/sports/{id}` / `DELETE /api/sports/{id}` — admin-managed sport catalog (super_admin only)
 - `GET   /api/dashboard/stats` — platform-wide counts
 - `GET   /api/dashboard/recent-matches` / `recent-tournaments`
+
+Collection endpoints accept both trailing-slash and non-slash forms
+(`/api/clubs` and `/api/clubs/`) — see [backend/app/routers/clubs.py](backend/app/routers/clubs.py)
+for the pattern. This is needed because the SPA catch-all in
+[backend/app/main.py](backend/app/main.py) shadows `GET /api/<thing>` for
+the no-slash form.
 
 ### System
 | Method | Endpoint        | Description     |
@@ -268,13 +285,18 @@ future migration work but not actively driving schema changes yet.
 - [x] FastAPI backend with 8 routers, JWT auth, bcrypt hashing
 - [x] SQLite default + MySQL support via env flag
 - [x] Single-file SPA frontend served by FastAPI ([static/index.html](static/index.html))
-- [x] Auto-seeded sports catalog (18 sports)
-- [x] CRUD for clubs, players, teams, matches, tournaments
-- [x] Match scoring + event log
-- [x] Tournament registration flow
+- [x] Auto-seeded sports catalog (18 sports) + admin-managed Add/Edit/Remove
+- [x] **Full CRUD UI** for clubs, teams, matches, tournaments, sports — Add, Edit, soft-Delete (Deactivate / Cancel)
+- [x] Team rosters — add/remove players
+- [x] Tournament registration + unregister flow
+- [x] Match scoring + event log + status transitions
+- [x] Inline modal error display (e.g. "Teams must be different") instead of toast-and-close
+- [x] Club color pickers + color swatches in clubs list
 - [x] Dashboard stats endpoints
-- [x] Role-based permissions (6 roles)
+- [x] Role-based permissions (6 roles) enforced on every mutating endpoint
 - [x] Global request logging + unhandled-exception handler
+- [x] Defensive JSON decoding for `score_a`/`score_b` (handles legacy non-string values)
+- [x] Auto-backfill of NULL `created_at`/`updated_at` across tables on startup
 - [x] Deployed to BigRock shared hosting via Passenger + a2wsgi
 
 ## 📌 Planned Next Phases

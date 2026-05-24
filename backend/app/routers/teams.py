@@ -3,11 +3,12 @@ from typing import List
 from app.core.database import execute_query
 from app.core.security import get_current_user, require_roles
 from app.models.models import Team, TeamMember, UserRole
-from app.schemas.schemas import TeamCreate, TeamOut, TeamMemberAdd
+from app.schemas.schemas import TeamCreate, TeamOut, TeamMemberAdd, TeamUpdate
 
 router = APIRouter()
 
 
+@router.get("", response_model=List[dict])
 @router.get("/", response_model=List[dict])
 def list_teams(_=Depends(get_current_user)):
     teams_rows = execute_query(
@@ -31,6 +32,7 @@ def list_teams(_=Depends(get_current_user)):
     ]
 
 
+@router.post("", response_model=dict, status_code=201)
 @router.post("/", response_model=dict, status_code=201)
 def create_team(
     payload: TeamCreate,
@@ -38,8 +40,8 @@ def create_team(
 ):
     team_data = payload.model_dump()
     team_id = execute_query(
-        """INSERT INTO teams (name, club_id, sport_id, captain_id, age_group, division, logo_url, is_active)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
+        """INSERT INTO teams (name, club_id, sport_id, captain_id, age_group, division, logo_url, is_active, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)""",
         (
             team_data.get('name'),
             team_data.get('club_id'),
@@ -94,6 +96,41 @@ def get_team(team_id: int, _=Depends(get_current_user)):
         "is_active": team_row['is_active'],
         "created_at": team_row['created_at'],
     }
+
+
+@router.patch("/{team_id}", response_model=dict)
+def update_team(
+    team_id: int,
+    payload: TeamUpdate,
+    _=Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.CLUB_ADMIN, UserRole.CLUB_MANAGER)),
+):
+    existing = execute_query("SELECT * FROM teams WHERE id = ?", (team_id,), fetch_one=True)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Team not found")
+
+    updates = payload.model_dump(exclude_none=True)
+    if updates:
+        fields = ', '.join([f"{k} = ?" for k in updates.keys()])
+        values = list(updates.values()) + [team_id]
+        execute_query(f"UPDATE teams SET {fields} WHERE id = ?", tuple(values))
+
+    row = execute_query("SELECT * FROM teams WHERE id = ?", (team_id,), fetch_one=True)
+    return {
+        "id": row['id'], "name": row['name'], "club_id": row['club_id'], "sport_id": row['sport_id'],
+        "captain_id": row['captain_id'], "age_group": row['age_group'], "division": row['division'],
+        "logo_url": row['logo_url'], "is_active": row['is_active'], "created_at": row['created_at'],
+    }
+
+
+@router.delete("/{team_id}", status_code=204)
+def deactivate_team(
+    team_id: int,
+    _=Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.CLUB_ADMIN)),
+):
+    existing = execute_query("SELECT id FROM teams WHERE id = ?", (team_id,), fetch_one=True)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Team not found")
+    execute_query("UPDATE teams SET is_active = 0 WHERE id = ?", (team_id,))
 
 
 @router.post("/{team_id}/members", status_code=201)

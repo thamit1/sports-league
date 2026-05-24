@@ -4,12 +4,26 @@ from datetime import datetime
 from app.core.database import execute_query
 from app.core.security import get_current_user, require_roles
 from app.models.models import MatchStatus, UserRole
-from app.schemas.schemas import MatchCreate, MatchOut, MatchScoreUpdate, MatchEventCreate
+from app.schemas.schemas import MatchCreate, MatchOut, MatchScoreUpdate, MatchEventCreate, MatchUpdate
 import json
 
 router = APIRouter()
 
 
+def _safe_json(value):
+    if value is None:
+        return None
+    if isinstance(value, (dict, list)):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (TypeError, ValueError):
+            return value
+    return value
+
+
+@router.get("", response_model=List[dict])
 @router.get("/", response_model=List[dict])
 def list_matches(
     tournament_id: Optional[int] = Query(None),
@@ -49,8 +63,8 @@ def list_matches(
             "started_at": m['started_at'],
             "ended_at": m['ended_at'],
             "venue": m['venue'],
-            "score_a": json.loads(m['score_a']) if m['score_a'] else None,
-            "score_b": json.loads(m['score_b']) if m['score_b'] else None,
+            "score_a": _safe_json(m['score_a']),
+            "score_b": _safe_json(m['score_b']),
             "winner_id": m['winner_id'],
             "round_number": m['round_number'],
             "notes": m['notes'],
@@ -61,6 +75,7 @@ def list_matches(
     ]
 
 
+@router.post("", response_model=dict, status_code=201)
 @router.post("/", response_model=dict, status_code=201)
 def create_match(
     payload: MatchCreate,
@@ -72,8 +87,8 @@ def create_match(
     match_data = payload.model_dump()
     match_id = execute_query(
         """INSERT INTO matches
-           (sport_id, tournament_id, team_a_id, team_b_id, official_id, status, scheduled_at, venue, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           (sport_id, tournament_id, team_a_id, team_b_id, official_id, status, scheduled_at, venue, notes, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)""",
         (
             match_data.get('sport_id'),
             match_data.get('tournament_id'),
@@ -106,8 +121,8 @@ def create_match(
         "started_at": match_row['started_at'],
         "ended_at": match_row['ended_at'],
         "venue": match_row['venue'],
-        "score_a": json.loads(match_row['score_a']) if match_row['score_a'] else None,
-        "score_b": json.loads(match_row['score_b']) if match_row['score_b'] else None,
+        "score_a": _safe_json(match_row['score_a']),
+        "score_b": _safe_json(match_row['score_b']),
         "winner_id": match_row['winner_id'],
         "round_number": match_row['round_number'],
         "notes": match_row['notes'],
@@ -138,14 +153,59 @@ def get_match(match_id: int, _=Depends(get_current_user)):
         "started_at": match_row['started_at'],
         "ended_at": match_row['ended_at'],
         "venue": match_row['venue'],
-        "score_a": json.loads(match_row['score_a']) if match_row['score_a'] else None,
-        "score_b": json.loads(match_row['score_b']) if match_row['score_b'] else None,
+        "score_a": _safe_json(match_row['score_a']),
+        "score_b": _safe_json(match_row['score_b']),
         "winner_id": match_row['winner_id'],
         "round_number": match_row['round_number'],
         "notes": match_row['notes'],
         "created_at": match_row['created_at'],
         "updated_at": match_row['updated_at'],
     }
+
+
+@router.patch("/{match_id}", response_model=dict)
+def update_match(
+    match_id: int,
+    payload: MatchUpdate,
+    _=Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.CLUB_ADMIN, UserRole.CLUB_MANAGER)),
+):
+    existing = execute_query("SELECT * FROM matches WHERE id = ?", (match_id,), fetch_one=True)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    updates = payload.model_dump(exclude_none=True)
+    if "team_a_id" in updates and "team_b_id" in updates and updates["team_a_id"] == updates["team_b_id"]:
+        raise HTTPException(status_code=400, detail="Teams must be different")
+    if updates:
+        if isinstance(updates.get("status"), MatchStatus):
+            updates["status"] = updates["status"].value
+        if isinstance(updates.get("scheduled_at"), datetime):
+            updates["scheduled_at"] = updates["scheduled_at"].isoformat()
+        fields = ', '.join([f"{k} = ?" for k in updates.keys()])
+        values = list(updates.values()) + [match_id]
+        execute_query(f"UPDATE matches SET {fields}, updated_at = CURRENT_TIMESTAMP WHERE id = ?", tuple(values))
+
+    row = execute_query("SELECT * FROM matches WHERE id = ?", (match_id,), fetch_one=True)
+    return {
+        "id": row['id'], "sport_id": row['sport_id'], "tournament_id": row['tournament_id'],
+        "team_a_id": row['team_a_id'], "team_b_id": row['team_b_id'], "official_id": row['official_id'],
+        "status": row['status'], "scheduled_at": row['scheduled_at'], "started_at": row['started_at'],
+        "ended_at": row['ended_at'], "venue": row['venue'],
+        "score_a": _safe_json(row['score_a']), "score_b": _safe_json(row['score_b']),
+        "winner_id": row['winner_id'], "round_number": row['round_number'], "notes": row['notes'],
+        "created_at": row['created_at'], "updated_at": row['updated_at'],
+    }
+
+
+@router.delete("/{match_id}", status_code=204)
+def delete_match(
+    match_id: int,
+    _=Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.CLUB_ADMIN)),
+):
+    existing = execute_query("SELECT id FROM matches WHERE id = ?", (match_id,), fetch_one=True)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Match not found")
+    execute_query("UPDATE matches SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (match_id,))
 
 
 @router.patch("/{match_id}/score")

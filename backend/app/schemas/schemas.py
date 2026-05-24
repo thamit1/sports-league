@@ -127,6 +127,20 @@ class ClubOut(BaseModel):
 
 # ─── Sport ────────────────────────────────────────────────────────────────────
 
+class SportCreate(BaseModel):
+    name: str
+    category: Optional[str] = None
+    max_team_size: int = 1
+    min_team_size: int = 1
+    icon: Optional[str] = None
+
+class SportUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    max_team_size: Optional[int] = None
+    min_team_size: Optional[int] = None
+    icon: Optional[str] = None
+
 class SportOut(BaseModel):
     id: int
     name: str
@@ -165,6 +179,15 @@ class TeamOut(BaseModel):
     class Config:
         from_attributes = True
 
+class TeamUpdate(BaseModel):
+    name: Optional[str] = None
+    sport_id: Optional[int] = None
+    club_id: Optional[int] = None
+    captain_id: Optional[int] = None
+    age_group: Optional[str] = None
+    division: Optional[str] = None
+    logo_url: Optional[str] = None
+
 class TeamMemberAdd(BaseModel):
     player_id: int
     jersey_no: Optional[str] = None
@@ -184,6 +207,19 @@ class TournamentCreate(BaseModel):
     venue: Optional[str] = None
     description: Optional[str] = None
     prize_pool: float = 0
+
+class TournamentUpdate(BaseModel):
+    name: Optional[str] = None
+    sport_id: Optional[int] = None
+    organizer_id: Optional[int] = None
+    bracket_type: Optional[BracketType] = None
+    max_teams: Optional[int] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    venue: Optional[str] = None
+    description: Optional[str] = None
+    prize_pool: Optional[float] = None
+    status: Optional[TournamentStatus] = None
 
 class TournamentOut(BaseModel):
     id: int
@@ -215,6 +251,18 @@ class MatchCreate(BaseModel):
     scheduled_at: Optional[datetime] = None
     venue: Optional[str] = None
     round_number: Optional[int] = None
+
+class MatchUpdate(BaseModel):
+    sport_id: Optional[int] = None
+    team_a_id: Optional[int] = None
+    team_b_id: Optional[int] = None
+    tournament_id: Optional[int] = None
+    official_id: Optional[int] = None
+    scheduled_at: Optional[datetime] = None
+    venue: Optional[str] = None
+    round_number: Optional[int] = None
+    notes: Optional[str] = None
+    status: Optional[MatchStatus] = None
 
 class MatchScoreUpdate(BaseModel):
     score_a: Any

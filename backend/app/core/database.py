@@ -291,5 +291,13 @@ def init_db():
             )
         """)
 
+        # Normalize NULL timestamps across all tables (legacy rows)
+        logger.info("Normalizing NULL created_at/updated_at across tables")
+        for table in ("clubs", "matches"):
+            cursor.execute(f"UPDATE {table} SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL")
+            cursor.execute(f"UPDATE {table} SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL")
+        for table in ("teams", "tournaments", "match_events"):
+            cursor.execute(f"UPDATE {table} SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL")
+
         conn.commit()
         print("Database initialized successfully")

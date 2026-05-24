@@ -78,6 +78,7 @@ tr:last-child td{border-bottom:none}
 .form-control{width:100%;padding:8px 12px;border:1px solid var(--gray-200);border-radius:8px;font-size:13px;color:var(--gray-900);outline:none;transition:border .15s;background:#fff}
 .form-control:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
 select.form-control{cursor:pointer}
+input[type="color"].form-control{padding:2px;height:38px;cursor:pointer;background:transparent}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .form-error{font-size:12px;color:var(--danger);margin-top:4px}
 
@@ -767,20 +768,27 @@ async function saveUserAdminChanges(userId) {
 
 // ─── Teams Page ───────────────────────────────────────────────────
 async function renderTeams() {
-  let teams = [], sports = [];
-  try { [teams, sports] = await Promise.all([API.get('/teams'), API.get('/sports')]); } catch(e) {}
+  let teams = [], sports = [], clubs = [];
+  try { [teams, sports, clubs] = await Promise.all([API.get('/teams'), API.get('/sports'), API.get('/clubs')]); } catch(e) {}
 
   const sportMap = Object.fromEntries(sports.map(s => [s.id, s]));
+  const clubMap = Object.fromEntries(clubs.map(c => [c.id, c]));
   const rows = teams.map(t => `
-    <tr class="clickable" onclick="navigate('team-detail',{id:${t.id}})">
-      <td><div style="display:flex;align-items:center;gap:8px"><span style="font-size:20px">${sportIcon(sportMap[t.sport_id]?.name)}</span><strong>${t.name}</strong></div></td>
+    <tr>
+      <td class="clickable" onclick="navigate('team-detail',{id:${t.id}})"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:20px">${sportIcon(sportMap[t.sport_id]?.name)}</span><strong>${t.name}</strong></div></td>
+      <td>${clubMap[t.club_id]?.name||'—'}</td>
       <td>${sportMap[t.sport_id]?.name||'—'}</td>
       <td>${t.age_group||'—'}</td>
       <td>${t.division||'—'}</td>
       <td>${badge(t.is_active?'active':'inactive')}</td>
-    </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;padding:32px;color:#94a3b8">No teams yet</td></tr>';
+      <td style="white-space:nowrap">
+        ${isAdmin() ? `<button class="btn btn-secondary btn-sm" onclick='openEditTeam(${JSON.stringify(t).replace(/'/g,"&#39;")})'>Edit</button>` : ''}
+        ${isAdmin() && t.is_active ? `<button class="btn btn-danger btn-sm" onclick="deactivateTeam(${t.id})">Deactivate</button>` : ''}
+      </td>
+    </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;padding:32px;color:#94a3b8">No teams yet</td></tr>';
 
   const sportOptions = sports.map(s => `<option value="${s.id}">${sportIcon(s.name)} ${s.name}</option>`).join('');
+  const clubOptions = clubs.map(c => `<option value="${c.id}">${c.name}${c.code?' ('+c.code+')':''}</option>`).join('');
 
   return `
   <div class="page-header">
@@ -789,17 +797,45 @@ async function renderTeams() {
   </div>
   <div class="card" style="padding:0;overflow:hidden">
     <div class="table-wrap">
-      <table><thead><tr><th>Team</th><th>Sport</th><th>Age Group</th><th>Division</th><th>Status</th></tr></thead>
+      <table><thead><tr><th>Team</th><th>Club</th><th>Sport</th><th>Age Group</th><th>Division</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody>${rows}</tbody></table>
     </div>
   </div>
+  ${modalHTML('edit-team-modal','Edit Team',`
+    <form id="edit-team-form">
+      <input type="hidden" id="et-id"/>
+      <div class="form-group"><label class="form-label">Team Name</label><input class="form-control" id="et-name" required/></div>
+      <div class="form-group"><label class="form-label">Sport</label>
+        <select class="form-control" id="et-sport" required>${sportOptions}</select>
+      </div>
+      <div class="form-group"><label class="form-label">Club</label>
+        <select class="form-control" id="et-club" required>${clubOptions}</select>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Age Group</label>
+          <select class="form-control" id="et-age">
+            <option value="">Open</option>
+            <option value="U10">U10</option><option value="U12">U12</option>
+            <option value="U14">U14</option><option value="U16">U16</option>
+            <option value="U18">U18</option><option value="U21">U21</option>
+            <option value="Senior">Senior</option><option value="Veterans">Veterans</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Division</label><input class="form-control" id="et-div"/></div>
+      </div>
+    </form>`,
+    `<button class="btn btn-secondary" onclick="closeModal('edit-team-modal')">Cancel</button>
+     <button class="btn btn-primary" onclick="submitEditTeam()">Save Changes</button>`
+  )}
   ${modalHTML('add-team-modal','Create Team',`
     <form id="add-team-form">
       <div class="form-group"><label class="form-label">Team Name</label><input class="form-control" id="at-name" required/></div>
       <div class="form-group"><label class="form-label">Sport</label>
-        <select class="form-control" id="at-sport">${sportOptions}</select>
+        <select class="form-control" id="at-sport" required>${sportOptions}</select>
       </div>
-      <div class="form-group"><label class="form-label">Club ID</label><input class="form-control" type="number" id="at-club" placeholder="Club ID"/></div>
+      <div class="form-group"><label class="form-label">Club</label>
+        <select class="form-control" id="at-club" required>${clubOptions || '<option value="">— no clubs yet, create one first —</option>'}</select>
+      </div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Age Group</label>
           <select class="form-control" id="at-age">
@@ -818,12 +854,51 @@ async function renderTeams() {
   )}`;
 }
 
+function openEditTeam(team) {
+  document.getElementById('et-id').value    = team.id;
+  document.getElementById('et-name').value  = team.name || '';
+  document.getElementById('et-sport').value = team.sport_id || '';
+  document.getElementById('et-club').value  = team.club_id  || '';
+  document.getElementById('et-age').value   = team.age_group || '';
+  document.getElementById('et-div').value   = team.division || '';
+  openModal('edit-team-modal');
+}
+
+async function submitEditTeam() {
+  const id = document.getElementById('et-id').value;
+  try {
+    await API.patch(`/teams/${id}`, {
+      name:      document.getElementById('et-name').value,
+      sport_id:  parseInt(document.getElementById('et-sport').value),
+      club_id:   parseInt(document.getElementById('et-club').value),
+      age_group: document.getElementById('et-age').value || null,
+      division:  document.getElementById('et-div').value || null,
+    });
+    closeModal('edit-team-modal');
+    showAlert('Team updated!', 'success');
+    navigate('teams');
+  } catch(e) { showAlert(e.message); }
+}
+
+async function deactivateTeam(id) {
+  if (!confirm('Deactivate this team? Existing matches and rosters are preserved but the team will be hidden.')) return;
+  try {
+    await API.delete(`/teams/${id}`);
+    showAlert('Team deactivated.', 'success');
+    navigate('teams');
+  } catch(e) { showAlert(e.message); }
+}
+
 async function submitAddTeam() {
   try {
+    const sportId = parseInt(document.getElementById('at-sport').value);
+    const clubId  = parseInt(document.getElementById('at-club').value);
+    if (!sportId) { showAlert('Please select a sport'); return; }
+    if (!clubId)  { showAlert('Please select a club (create one first if none exist)'); return; }
     await API.post('/teams', {
       name:      document.getElementById('at-name').value,
-      sport_id:  parseInt(document.getElementById('at-sport').value),
-      club_id:   parseInt(document.getElementById('at-club').value) || 1,
+      sport_id:  sportId,
+      club_id:   clubId,
       age_group: document.getElementById('at-age').value || null,
       division:  document.getElementById('at-div').value || null,
     });
@@ -935,15 +1010,19 @@ async function renderMatches() {
     const sa = m.score_a != null ? (typeof m.score_a === 'object' ? JSON.stringify(m.score_a) : m.score_a) : '—';
     const sb = m.score_b != null ? (typeof m.score_b === 'object' ? JSON.stringify(m.score_b) : m.score_b) : '—';
     return `
-    <tr class="clickable" onclick="navigate('match-detail',{id:${m.id}})">
-      <td>${sportIcon(sportMap[m.sport_id]?.name)} ${sportMap[m.sport_id]?.name||'—'}</td>
-      <td><strong>${ta?.name||'?'}</strong> vs <strong>${tb?.name||'?'}</strong></td>
+    <tr>
+      <td class="clickable" onclick="navigate('match-detail',{id:${m.id}})">${sportIcon(sportMap[m.sport_id]?.name)} ${sportMap[m.sport_id]?.name||'—'}</td>
+      <td class="clickable" onclick="navigate('match-detail',{id:${m.id}})"><strong>${ta?.name||'?'}</strong> vs <strong>${tb?.name||'?'}</strong></td>
       <td style="font-family:monospace;font-weight:700">${sa} : ${sb}</td>
       <td>${badge(m.status)}</td>
       <td>${fmtDateTime(m.scheduled_at)}</td>
       <td>${m.venue||'—'}</td>
+      <td style="white-space:nowrap">
+        ${isAdmin() ? `<button class="btn btn-secondary btn-sm" onclick='openEditMatch(${JSON.stringify(m).replace(/'/g,"&#39;")})'>Edit</button>` : ''}
+        ${isAdmin() && m.status !== 'cancelled' ? `<button class="btn btn-danger btn-sm" onclick="cancelMatch(${m.id})">Cancel</button>` : ''}
+      </td>
     </tr>`;
-  }).join('') || '<tr><td colspan="6" style="text-align:center;padding:32px;color:#94a3b8">No matches found</td></tr>';
+  }).join('') || '<tr><td colspan="7" style="text-align:center;padding:32px;color:#94a3b8">No matches found</td></tr>';
 
   const teamOptions = teams.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
   const sportOptions = sports.map(s => `<option value="${s.id}">${sportIcon(s.name)} ${s.name}</option>`).join('');
@@ -962,10 +1041,50 @@ async function renderMatches() {
   </div>
   <div class="card" style="padding:0;overflow:hidden">
     <div class="table-wrap">
-      <table><thead><tr><th>Sport</th><th>Teams</th><th>Score</th><th>Status</th><th>Scheduled</th><th>Venue</th></tr></thead>
+      <table><thead><tr><th>Sport</th><th>Teams</th><th>Score</th><th>Status</th><th>Scheduled</th><th>Venue</th><th>Actions</th></tr></thead>
       <tbody>${rows}</tbody></table>
     </div>
   </div>
+  ${modalHTML('edit-match-modal','Edit Match',`
+    <form id="edit-match-form">
+      <input type="hidden" id="em-id"/>
+      <div id="em-error" class="form-error" style="display:none;margin-bottom:8px;padding:8px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px"></div>
+      <div class="form-group"><label class="form-label">Sport</label>
+        <select class="form-control" id="em-sport" required>${sportOptions}</select>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Team A</label>
+          <select class="form-control" id="em-ta" required>${teamOptions}</select>
+        </div>
+        <div class="form-group"><label class="form-label">Team B</label>
+          <select class="form-control" id="em-tb" required>${teamOptions}</select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Status</label>
+          <select class="form-control" id="em-status">
+            <option value="scheduled">Scheduled</option>
+            <option value="in_progress">In Progress</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="postponed">Postponed</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Round</label><input class="form-control" type="number" id="em-round"/></div>
+      </div>
+      <div class="form-group"><label class="form-label">Scheduled Date/Time</label>
+        <input class="form-control" type="datetime-local" id="em-dt"/>
+      </div>
+      <div class="form-group"><label class="form-label">Venue</label>
+        <input class="form-control" id="em-venue"/>
+      </div>
+      <div class="form-group"><label class="form-label">Notes</label>
+        <textarea class="form-control" id="em-notes" rows="2"></textarea>
+      </div>
+    </form>`,
+    `<button class="btn btn-secondary" onclick="closeModal('edit-match-modal')">Cancel</button>
+     <button class="btn btn-primary" onclick="submitEditMatch()">Save Changes</button>`
+  )}
   ${modalHTML('add-match-modal','Schedule Match',`
     <form id="add-match-form">
       <div class="form-group"><label class="form-label">Sport</label>
@@ -989,6 +1108,61 @@ async function renderMatches() {
     `<button class="btn btn-secondary" onclick="closeModal('add-match-modal')">Cancel</button>
      <button class="btn btn-primary" onclick="submitAddMatch()">Schedule</button>`
   )}`;
+}
+
+function setInlineError(elId, msg) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (!msg) { el.style.display = 'none'; el.textContent = ''; return; }
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function openEditMatch(m) {
+  setInlineError('em-error', null);
+  document.getElementById('em-id').value     = m.id;
+  document.getElementById('em-sport').value  = m.sport_id || '';
+  document.getElementById('em-ta').value     = m.team_a_id || '';
+  document.getElementById('em-tb').value     = m.team_b_id || '';
+  document.getElementById('em-status').value = m.status || 'scheduled';
+  document.getElementById('em-round').value  = m.round_number || '';
+  // datetime-local needs YYYY-MM-DDTHH:MM
+  document.getElementById('em-dt').value     = m.scheduled_at ? String(m.scheduled_at).replace(' ','T').slice(0,16) : '';
+  document.getElementById('em-venue').value  = m.venue || '';
+  document.getElementById('em-notes').value  = m.notes || '';
+  openModal('edit-match-modal');
+}
+
+async function submitEditMatch() {
+  setInlineError('em-error', null);
+  const id = document.getElementById('em-id').value;
+  const ta = parseInt(document.getElementById('em-ta').value);
+  const tb = parseInt(document.getElementById('em-tb').value);
+  if (ta === tb) { setInlineError('em-error', 'Teams must be different'); return; }
+  try {
+    await API.patch(`/matches/${id}`, {
+      sport_id:     parseInt(document.getElementById('em-sport').value),
+      team_a_id:    ta,
+      team_b_id:    tb,
+      status:       document.getElementById('em-status').value,
+      round_number: parseInt(document.getElementById('em-round').value) || null,
+      scheduled_at: document.getElementById('em-dt').value || null,
+      venue:        document.getElementById('em-venue').value || null,
+      notes:        document.getElementById('em-notes').value || null,
+    });
+    closeModal('edit-match-modal');
+    showAlert('Match updated!', 'success');
+    navigate('matches');
+  } catch(e) { setInlineError('em-error', e.message); }
+}
+
+async function cancelMatch(id) {
+  if (!confirm('Cancel this match? It will be marked cancelled and hidden from active filters.')) return;
+  try {
+    await API.delete(`/matches/${id}`);
+    showAlert('Match cancelled.', 'success');
+    navigate('matches');
+  } catch(e) { showAlert(e.message); }
 }
 
 async function submitAddMatch() {
@@ -1151,15 +1325,19 @@ async function renderTournaments() {
   const clubOptions  = clubs.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
 
   const rows = tournaments.map(t => `
-    <tr class="clickable" onclick="navigate('tournament-detail',{id:${t.id}})">
-      <td><strong>${t.name}</strong></td>
+    <tr>
+      <td class="clickable" onclick="navigate('tournament-detail',{id:${t.id}})"><strong>${t.name}</strong></td>
       <td>${sportIcon(sportMap[t.sport_id]?.name)} ${sportMap[t.sport_id]?.name||'—'}</td>
       <td>${badge(t.status)}</td>
       <td>${t.bracket_type?.replace('_',' ')||'—'}</td>
       <td>${t.max_teams}</td>
       <td>${fmtDate(t.start_date)}</td>
       <td>${t.venue||'—'}</td>
-    </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;padding:32px;color:#94a3b8">No tournaments yet</td></tr>';
+      <td style="white-space:nowrap">
+        ${isAdmin() ? `<button class="btn btn-secondary btn-sm" onclick='openEditTournament(${JSON.stringify(t).replace(/'/g,"&#39;")})'>Edit</button>` : ''}
+        ${isAdmin() && t.status !== 'cancelled' ? `<button class="btn btn-danger btn-sm" onclick="cancelTournament(${t.id})">Cancel</button>` : ''}
+      </td>
+    </tr>`).join('') || '<tr><td colspan="8" style="text-align:center;padding:32px;color:#94a3b8">No tournaments yet</td></tr>';
 
   return `
   <div class="page-header">
@@ -1168,10 +1346,49 @@ async function renderTournaments() {
   </div>
   <div class="card" style="padding:0;overflow:hidden">
     <div class="table-wrap">
-      <table><thead><tr><th>Name</th><th>Sport</th><th>Status</th><th>Format</th><th>Max Teams</th><th>Start</th><th>Venue</th></tr></thead>
+      <table><thead><tr><th>Name</th><th>Sport</th><th>Status</th><th>Format</th><th>Max Teams</th><th>Start</th><th>Venue</th><th>Actions</th></tr></thead>
       <tbody>${rows}</tbody></table>
     </div>
   </div>
+  ${modalHTML('edit-tourn-modal','Edit Tournament',`
+    <form id="edit-tourn-form">
+      <input type="hidden" id="et2-id"/>
+      <div class="form-group"><label class="form-label">Tournament Name</label><input class="form-control" id="et2-name" required/></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Sport</label>
+          <select class="form-control" id="et2-sport">${sportOptions}</select>
+        </div>
+        <div class="form-group"><label class="form-label">Organising Club</label>
+          <select class="form-control" id="et2-club">${clubOptions}</select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Format</label>
+          <select class="form-control" id="et2-bracket">
+            <option value="single_elimination">Single Elimination</option>
+            <option value="double_elimination">Double Elimination</option>
+            <option value="round_robin">Round Robin</option>
+            <option value="swiss">Swiss</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Max Teams</label>
+          <input class="form-control" type="number" id="et2-max" min="2"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Start Date</label>
+          <input class="form-control" type="date" id="et2-start"/>
+        </div>
+        <div class="form-group"><label class="form-label">End Date</label>
+          <input class="form-control" type="date" id="et2-end"/>
+        </div>
+      </div>
+      <div class="form-group"><label class="form-label">Venue</label><input class="form-control" id="et2-venue"/></div>
+      <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="et2-desc" rows="2"></textarea></div>
+    </form>`,
+    `<button class="btn btn-secondary" onclick="closeModal('edit-tourn-modal')">Cancel</button>
+     <button class="btn btn-primary" onclick="submitEditTournament()">Save Changes</button>`
+  )}
   ${modalHTML('add-tourn-modal','Create Tournament',`
     <form id="add-tourn-form">
       <div class="form-group"><label class="form-label">Tournament Name</label><input class="form-control" id="at2-name" required/></div>
@@ -1210,6 +1427,49 @@ async function renderTournaments() {
     `<button class="btn btn-secondary" onclick="closeModal('add-tourn-modal')">Cancel</button>
      <button class="btn btn-primary" onclick="submitAddTournament()">Create</button>`
   )}`;
+}
+
+function openEditTournament(t) {
+  document.getElementById('et2-id').value      = t.id;
+  document.getElementById('et2-name').value    = t.name || '';
+  document.getElementById('et2-sport').value   = t.sport_id || '';
+  document.getElementById('et2-club').value    = t.organizer_id || '';
+  document.getElementById('et2-bracket').value = t.bracket_type || 'single_elimination';
+  document.getElementById('et2-max').value     = t.max_teams || 16;
+  document.getElementById('et2-start').value   = t.start_date || '';
+  document.getElementById('et2-end').value     = t.end_date || '';
+  document.getElementById('et2-venue').value   = t.venue || '';
+  document.getElementById('et2-desc').value    = t.description || '';
+  openModal('edit-tourn-modal');
+}
+
+async function submitEditTournament() {
+  const id = document.getElementById('et2-id').value;
+  try {
+    await API.patch(`/tournaments/${id}`, {
+      name:         document.getElementById('et2-name').value,
+      sport_id:     parseInt(document.getElementById('et2-sport').value),
+      organizer_id: parseInt(document.getElementById('et2-club').value),
+      bracket_type: document.getElementById('et2-bracket').value,
+      max_teams:    parseInt(document.getElementById('et2-max').value),
+      start_date:   document.getElementById('et2-start').value || null,
+      end_date:     document.getElementById('et2-end').value || null,
+      venue:        document.getElementById('et2-venue').value || null,
+      description:  document.getElementById('et2-desc').value || null,
+    });
+    closeModal('edit-tourn-modal');
+    showAlert('Tournament updated!', 'success');
+    navigate('tournaments');
+  } catch(e) { showAlert(e.message); }
+}
+
+async function cancelTournament(id) {
+  if (!confirm('Cancel this tournament? Its status will be set to cancelled.')) return;
+  try {
+    await API.delete(`/tournaments/${id}`);
+    showAlert('Tournament cancelled.', 'success');
+    navigate('tournaments');
+  } catch(e) { showAlert(e.message); }
 }
 
 async function submitAddTournament() {
@@ -1277,14 +1537,15 @@ async function renderTournamentDetail() {
   </div>
   <div class="card" style="padding:0;overflow:hidden">
     <div class="table-wrap">
-      <table><thead><tr><th>Team</th><th>Seed</th><th>Approved</th><th>Registered</th></tr></thead>
+      <table><thead><tr><th>Team</th><th>Seed</th><th>Approved</th><th>Registered</th><th>Action</th></tr></thead>
       <tbody>${regTeams.length ? regTeams.map(t=>`
         <tr>
           <td><strong>${t.team_name||'—'}</strong></td>
           <td>${t.seed||'—'}</td>
           <td>${t.is_approved ? '✅' : '⏳'}</td>
           <td>${fmtDate(t.registered_at)}</td>
-        </tr>`).join('') : '<tr><td colspan="4" style="text-align:center;padding:24px;color:#94a3b8">No teams registered yet</td></tr>'}
+          <td>${isAdmin() ? `<button class="btn btn-danger btn-sm" onclick="unregisterTeam(${id},${t.team_id})">Remove</button>` : ''}</td>
+        </tr>`).join('') : '<tr><td colspan="5" style="text-align:center;padding:24px;color:#94a3b8">No teams registered yet</td></tr>'}
       </tbody></table>
     </div>
   </div>
@@ -1308,6 +1569,15 @@ async function registerTeam(tournamentId) {
   } catch(e) { showAlert(e.message); }
 }
 
+async function unregisterTeam(tournamentId, teamId) {
+  if (!confirm('Remove this team from the tournament?')) return;
+  try {
+    await API.delete(`/tournaments/${tournamentId}/teams/${teamId}`);
+    showAlert('Team removed', 'success');
+    navigate('tournament-detail', { id: tournamentId });
+  } catch(e) { showAlert(e.message); }
+}
+
 async function updateTournamentStatus(id, status) {
   try {
     await API.patch(`/tournaments/${id}/status?status=${status}`);
@@ -1325,6 +1595,7 @@ async function renderSports() {
   return `
   <div class="page-header">
     <div><div class="page-title">Sports</div><div class="page-sub">${sports.length} sports configured</div></div>
+    ${isSuperAdmin() ? `<button class="btn btn-primary" onclick="openModal('add-sport-modal')">+ Add Sport</button>` : ''}
   </div>
   ${cats.map(cat => `
   <div style="margin-bottom:24px">
@@ -1333,13 +1604,110 @@ async function renderSports() {
       ${sports.filter(s=>s.category===cat).map(s=>`
       <div class="card-sm" style="display:flex;align-items:center;gap:12px">
         <div style="font-size:28px">${sportIcon(s.name)}</div>
-        <div>
+        <div style="flex:1;min-width:0">
           <div style="font-weight:700;font-size:14px">${s.name}</div>
           <div style="font-size:11px;color:var(--gray-500)">Team size: ${s.min_team_size}${s.min_team_size!==s.max_team_size?'–'+s.max_team_size:''}</div>
         </div>
+        ${isSuperAdmin() ? `<div style="display:flex;flex-direction:column;gap:4px">
+          <button class="btn btn-secondary btn-sm" onclick='openEditSport(${JSON.stringify(s).replace(/'/g,"&#39;")})'>Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deactivateSport(${s.id})">Remove</button>
+        </div>` : ''}
       </div>`).join('')}
     </div>
-  </div>`).join('')}`;
+  </div>`).join('')}
+  ${modalHTML('edit-sport-modal','Edit Sport',`
+    <form id="edit-sport-form">
+      <input type="hidden" id="es-id"/>
+      <div class="form-group"><label class="form-label">Name</label><input class="form-control" id="es-name" required/></div>
+      <div class="form-group"><label class="form-label">Category</label>
+        <select class="form-control" id="es-category">
+          <option value="team">Team</option>
+          <option value="racket">Racket</option>
+          <option value="precision">Precision</option>
+          <option value="aquatic">Aquatic</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Min Team Size</label><input class="form-control" type="number" id="es-min" min="1"/></div>
+        <div class="form-group"><label class="form-label">Max Team Size</label><input class="form-control" type="number" id="es-max" min="1"/></div>
+      </div>
+      <div class="form-group"><label class="form-label">Icon (emoji)</label><input class="form-control" id="es-icon" maxlength="4"/></div>
+    </form>`,
+    `<button class="btn btn-secondary" onclick="closeModal('edit-sport-modal')">Cancel</button>
+     <button class="btn btn-primary" onclick="submitEditSport()">Save Changes</button>`
+  )}
+  ${modalHTML('add-sport-modal','Add Sport',`
+    <form id="add-sport-form">
+      <div class="form-group"><label class="form-label">Name</label><input class="form-control" id="as-name" required/></div>
+      <div class="form-group"><label class="form-label">Category</label>
+        <select class="form-control" id="as-category">
+          <option value="team">Team</option>
+          <option value="racket">Racket</option>
+          <option value="precision">Precision</option>
+          <option value="aquatic">Aquatic</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Min Team Size</label><input class="form-control" type="number" id="as-min" value="1" min="1"/></div>
+        <div class="form-group"><label class="form-label">Max Team Size</label><input class="form-control" type="number" id="as-max" value="1" min="1"/></div>
+      </div>
+      <div class="form-group"><label class="form-label">Icon (emoji)</label><input class="form-control" id="as-icon" placeholder="🏆" maxlength="4"/></div>
+    </form>`,
+    `<button class="btn btn-secondary" onclick="closeModal('add-sport-modal')">Cancel</button>
+     <button class="btn btn-primary" onclick="submitAddSport()">Add Sport</button>`
+  )}`;
+}
+
+function openEditSport(s) {
+  document.getElementById('es-id').value       = s.id;
+  document.getElementById('es-name').value     = s.name || '';
+  document.getElementById('es-category').value = s.category || 'team';
+  document.getElementById('es-min').value      = s.min_team_size || 1;
+  document.getElementById('es-max').value      = s.max_team_size || 1;
+  document.getElementById('es-icon').value     = s.icon || '';
+  openModal('edit-sport-modal');
+}
+
+async function submitEditSport() {
+  const id = document.getElementById('es-id').value;
+  try {
+    await API.patch(`/sports/${id}`, {
+      name:          document.getElementById('es-name').value,
+      category:      document.getElementById('es-category').value,
+      min_team_size: parseInt(document.getElementById('es-min').value) || 1,
+      max_team_size: parseInt(document.getElementById('es-max').value) || 1,
+      icon:          document.getElementById('es-icon').value || null,
+    });
+    closeModal('edit-sport-modal');
+    showAlert('Sport updated!', 'success');
+    navigate('sports');
+  } catch(e) { showAlert(e.message); }
+}
+
+async function deactivateSport(id) {
+  if (!confirm('Remove this sport? Existing teams/matches/tournaments using it will remain but it will no longer be available for new ones.')) return;
+  try {
+    await API.delete(`/sports/${id}`);
+    showAlert('Sport removed.', 'success');
+    navigate('sports');
+  } catch(e) { showAlert(e.message); }
+}
+
+async function submitAddSport() {
+  try {
+    await API.post('/sports', {
+      name:          document.getElementById('as-name').value,
+      category:      document.getElementById('as-category').value,
+      min_team_size: parseInt(document.getElementById('as-min').value) || 1,
+      max_team_size: parseInt(document.getElementById('as-max').value) || 1,
+      icon:          document.getElementById('as-icon').value || null,
+    });
+    closeModal('add-sport-modal');
+    showAlert('Sport added!', 'success');
+    navigate('sports');
+  } catch(e) { showAlert(e.message); }
 }
 
 // ─── Clubs Page ───────────────────────────────────────────────────
@@ -1357,9 +1725,19 @@ async function renderClubs() {
       </td>
       <td>${c.city||'—'}</td>
       <td>${c.country||'—'}</td>
+      <td>
+        <div style="display:flex;gap:4px;align-items:center">
+          <span title="Primary ${c.primary_color}" style="width:18px;height:18px;border-radius:4px;border:1px solid #e5e7eb;background:${c.primary_color}"></span>
+          <span title="Secondary ${c.secondary_color}" style="width:18px;height:18px;border-radius:4px;border:1px solid #e5e7eb;background:${c.secondary_color}"></span>
+        </div>
+      </td>
       <td>${badge(c.is_active?'active':'inactive')}</td>
       <td>${fmtDate(c.created_at)}</td>
-    </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;padding:32px;color:#94a3b8">No clubs yet</td></tr>';
+      <td style="white-space:nowrap">
+        ${isAdmin() ? `<button class="btn btn-secondary btn-sm" onclick='openEditClub(${JSON.stringify(c).replace(/'/g,"&#39;")})'>Edit</button>` : ''}
+        ${isSuperAdmin() && c.is_active ? `<button class="btn btn-danger btn-sm" onclick="deactivateClub(${c.id})">Deactivate</button>` : ''}
+      </td>
+    </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;padding:32px;color:#94a3b8">No clubs yet</td></tr>';
 
   return `
   <div class="page-header">
@@ -1368,10 +1746,31 @@ async function renderClubs() {
   </div>
   <div class="card" style="padding:0;overflow:hidden">
     <div class="table-wrap">
-      <table><thead><tr><th>Club</th><th>City</th><th>Country</th><th>Status</th><th>Created</th></tr></thead>
+      <table><thead><tr><th>Club</th><th>City</th><th>Country</th><th>Colors</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
       <tbody>${rows}</tbody></table>
     </div>
   </div>
+  ${modalHTML('edit-club-modal','Edit Club',`
+    <form id="edit-club-form">
+      <input type="hidden" id="ec-id"/>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Club Name</label><input class="form-control" id="ec-name" required/></div>
+        <div class="form-group"><label class="form-label">Code</label><input class="form-control" id="ec-code" disabled/></div>
+      </div>
+      <div class="form-group"><label class="form-label">Short Name</label><input class="form-control" id="ec-short"/></div>
+      <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="ec-desc" rows="2"></textarea></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">City</label><input class="form-control" id="ec-city"/></div>
+        <div class="form-group"><label class="form-label">Country</label><input class="form-control" id="ec-country"/></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Primary Color</label><input class="form-control" type="color" id="ec-p"/></div>
+        <div class="form-group"><label class="form-label">Secondary Color</label><input class="form-control" type="color" id="ec-s"/></div>
+      </div>
+    </form>`,
+    `<button class="btn btn-secondary" onclick="closeModal('edit-club-modal')">Cancel</button>
+     <button class="btn btn-primary" onclick="submitEditClub()">Save Changes</button>`
+  )}
   ${modalHTML('add-club-modal','Add Club',`
     <form id="add-club-form">
       <div class="form-row">
@@ -1392,6 +1791,46 @@ async function renderClubs() {
     `<button class="btn btn-secondary" onclick="closeModal('add-club-modal')">Cancel</button>
      <button class="btn btn-primary" onclick="submitAddClub()">Create Club</button>`
   )}`;
+}
+
+function openEditClub(club) {
+  document.getElementById('ec-id').value      = club.id;
+  document.getElementById('ec-name').value    = club.name || '';
+  document.getElementById('ec-code').value    = club.code || '';
+  document.getElementById('ec-short').value   = club.short_name || '';
+  document.getElementById('ec-desc').value    = club.description || '';
+  document.getElementById('ec-city').value    = club.city || '';
+  document.getElementById('ec-country').value = club.country || '';
+  document.getElementById('ec-p').value       = club.primary_color || '#2563eb';
+  document.getElementById('ec-s').value       = club.secondary_color || '#ffffff';
+  openModal('edit-club-modal');
+}
+
+async function submitEditClub() {
+  const id = document.getElementById('ec-id').value;
+  try {
+    await API.patch(`/clubs/${id}`, {
+      name:            document.getElementById('ec-name').value,
+      short_name:      document.getElementById('ec-short').value || null,
+      description:     document.getElementById('ec-desc').value || null,
+      city:            document.getElementById('ec-city').value || null,
+      country:         document.getElementById('ec-country').value || null,
+      primary_color:   document.getElementById('ec-p').value,
+      secondary_color: document.getElementById('ec-s').value,
+    });
+    closeModal('edit-club-modal');
+    showAlert('Club updated!', 'success');
+    navigate('clubs');
+  } catch(e) { showAlert(e.message); }
+}
+
+async function deactivateClub(id) {
+  if (!confirm('Deactivate this club? Existing teams will remain but the club will be hidden from active lists.')) return;
+  try {
+    await API.delete(`/clubs/${id}`);
+    showAlert('Club deactivated.', 'success');
+    navigate('clubs');
+  } catch(e) { showAlert(e.message); }
 }
 
 async function submitAddClub() {
