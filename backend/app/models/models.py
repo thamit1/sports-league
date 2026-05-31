@@ -39,6 +39,32 @@ class BracketType(str, enum.Enum):
     ROUND_ROBIN        = "round_robin"
     SWISS              = "swiss"
 
+class MatchType(str, enum.Enum):
+    SINGLES = "singles"
+    DOUBLES = "doubles"
+
+class SeasonResetType(str, enum.Enum):
+    NONE = "none"
+    SOFT = "soft"
+    HARD = "hard"
+
+class RatingVisibility(str, enum.Enum):
+    PUBLIC        = "public"
+    CLUB_MEMBERS  = "club_members"
+    ADMINS_ONLY   = "admins_only"
+
+class RatingJobStatus(str, enum.Enum):
+    PENDING   = "pending"
+    RUNNING   = "running"
+    COMPLETED = "completed"
+    FAILED    = "failed"
+
+class RankingScope(str, enum.Enum):
+    GLOBAL    = "global"
+    CLUB      = "club"
+    AGE_GROUP = "age_group"
+    DIVISION  = "division"
+
 
 # ─── Data Models ──────────────────────────────────────────────────────────────
 
@@ -215,6 +241,105 @@ class Match:
         if self.score_b and isinstance(self.score_b, str):
             data['score_b'] = json.loads(self.score_b)
         return data
+
+
+@dataclass
+class SportRatingConfig:
+    id: int
+    sport_id: int
+    provisional_threshold: int = 5
+    season_reset_type: str = "none"
+    season_reset_factor: float = 0.3
+    visibility: str = "club_members"
+    k_factor_provisional: float = 32.0
+    k_factor_established: float = 16.0
+    k_factor_elite: float = 8.0
+    starting_rating: float = 50.0
+    max_rating_change_per_match: float = 15.0
+    is_active: bool = True
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+    def to_dict(self):
+        return asdict(self)
+
+
+@dataclass
+class PlayerRating:
+    id: int
+    player_id: int
+    sport_id: int
+    match_type: str
+    rating: float = 50.0
+    peak_rating: float = 50.0
+    matches_played: int = 0
+    matches_won: int = 0
+    matches_drawn: int = 0
+    matches_lost: int = 0
+    is_provisional: bool = True
+    is_active: bool = True
+    last_match_at: Optional[str] = None
+    last_calculated_at: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+    def to_dict(self):
+        return asdict(self)
+
+
+@dataclass
+class RatingHistory:
+    id: int
+    player_id: int
+    sport_id: int
+    match_id: int
+    match_type: str
+    rating_before: float
+    rating_after: float
+    rating_delta: float
+    expected_score: float
+    actual_score: float
+    opponent_rating_at_time: float
+    k_factor_used: float
+    match_played_at: Optional[str] = None
+    created_at: Optional[str] = None
+
+    def to_dict(self):
+        return asdict(self)
+
+
+@dataclass
+class PlayerRanking:
+    id: int
+    player_id: int
+    sport_id: int
+    match_type: str
+    scope: str
+    scope_value: Optional[str]
+    rank: int
+    rating: float
+    total_ranked: int
+    calculated_at: Optional[str] = None
+
+    def to_dict(self):
+        return asdict(self)
+
+
+@dataclass
+class RecalculationJob:
+    id: int
+    triggered_by_id: Optional[int] = None
+    sport_id: Optional[int] = None
+    status: str = "pending"
+    matches_processed: int = 0
+    players_updated: int = 0
+    error_message: Optional[str] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    created_at: Optional[str] = None
+
+    def to_dict(self):
+        return asdict(self)
 
 
 @dataclass

@@ -18,19 +18,22 @@ sports-league/
 │   ├── app/
 │   │   ├── core/
 │   │   │   ├── config.py       # Settings (reads .env), DB switch
-│   │   │   ├── database.py     # SQLAlchemy engine + session, init_db
+│   │   │   ├── database.py     # Raw sqlite3 helper + init_db + DEFAULT_SPORTS seeding
 │   │   │   ├── logging.py      # Logging config
 │   │   │   └── security.py     # JWT auth + bcrypt password hashing
-│   │   ├── models/models.py    # All DB models (Club, User, Team, Match…)
+│   │   ├── models/models.py    # Dataclass models (Club, User, Team, Match, ratings…)
 │   │   ├── routers/
 │   │   │   ├── auth.py         # /api/auth/login|register|me
 │   │   │   ├── clubs.py        # CRUD /api/clubs
 │   │   │   ├── players.py      # CRUD /api/players
 │   │   │   ├── teams.py        # CRUD /api/teams + roster management
-│   │   │   ├── sports.py       # GET /api/sports (auto-seeded)
+│   │   │   ├── sports.py       # CRUD /api/sports (catalog seeded by init_db)
 │   │   │   ├── matches.py      # CRUD /api/matches + scoring + events
 │   │   │   ├── tournaments.py  # CRUD /api/tournaments + registration
-│   │   │   └── dashboard.py    # GET /api/dashboard/stats|recent-*
+│   │   │   ├── dashboard.py    # GET /api/dashboard/stats|recent-*
+│   │   │   └── ratings.py      # /api/ratings — configs, recalc jobs, leaderboards, player ratings
+│   │   ├── services/
+│   │   │   └── rating_engine.py  # Pure Elo engine — no FastAPI imports
 │   │   ├── schemas/schemas.py  # Pydantic request/response models
 │   │   └── main.py             # FastAPI app + serves SPA + global logging
 │   ├── run.py                  # Local entry point (port 8765)
@@ -42,6 +45,7 @@ sports-league/
 ├── passenger_wsgi.py           # BigRock shared hosting entry (WSGI ↔ ASGI)
 ├── setup_db.sql                # Optional MySQL setup script
 ├── slms.db                     # Default SQLite database (auto-created)
+├── RATINGS.md                  # Ratings & rankings setup guide
 └── 01-command.txt              # Local + deployment cheat sheet
 ```
 
@@ -250,6 +254,21 @@ Highlights:
 - `GET   /api/dashboard/stats` — platform-wide counts
 - `GET   /api/dashboard/recent-matches` / `recent-tournaments`
 
+### Ratings & Rankings — `/api/ratings/*`
+
+DUPR-style 0–100 ratings, derived from completed match scores via
+sport-specific Elo math. Recalculation is **manual, synchronous, and
+super_admin-triggered**. See [RATINGS.md](RATINGS.md) for full setup,
+math reference, and troubleshooting.
+
+- `POST   /api/ratings/config` / `PATCH /api/ratings/config/{sport_id}` — per-sport tuning (K-factors, provisional threshold, visibility, season-reset behaviour) — super_admin
+- `POST   /api/ratings/recalculate` — wipe + replay history, rebuild rankings (`{sport_id: int | null}`)
+- `GET    /api/ratings/jobs` / `/jobs/{id}` — recalculation audit trail
+- `POST   /api/ratings/season-reset/{sport_id}` — apply configured reset (`{confirm: true}`)
+- `GET    /api/ratings/player/{player_id}` — all sport ratings for a player (visibility-filtered)
+- `GET    /api/ratings/player/{player_id}/{sport_id}/history` — match-by-match deltas
+- `GET    /api/ratings/leaderboard/{sport_id}` — top N with `match_type` + `scope` (global / club / age_group / division) filters
+
 Collection endpoints accept both trailing-slash and non-slash forms
 (`/api/clubs` and `/api/clubs/`) — see [backend/app/routers/clubs.py](backend/app/routers/clubs.py)
 for the pattern. This is needed because the SPA catch-all in
@@ -273,23 +292,35 @@ Sport ──< Match ──< MatchEvent
 Sport ──< Tournament ──< TournamentRegistration >── Team
 Tournament ──< Match
 User ──< PlayerMembership >── Club   (multi-club support)
+
+# Ratings subsystem
+Sport ──< SportRatingConfig (1:1)
+(User, Sport, match_type) ──< PlayerRating  ──< RatingHistory ──> Match
+(User, Sport, match_type, scope) ──< PlayerRanking
+User triggers ──< RecalculationJob
 ```
 
-Tables auto-create on startup via `init_db()`. `alembic.ini` is present for
+Tables auto-create on startup via `init_db()` in
+[backend/app/core/database.py](backend/app/core/database.py), which also
+**idempotently seeds the canonical 18-sport catalog** on every boot (matches
+by name — won't duplicate or overwrite). `alembic.ini` is present for
 future migration work but not actively driving schema changes yet.
 
 ---
 
 ## ✅ What's Done (current MVP)
 
-- [x] FastAPI backend with 8 routers, JWT auth, bcrypt hashing
+- [x] FastAPI backend with **9 routers**, JWT auth, bcrypt hashing
 - [x] SQLite default + MySQL support via env flag
 - [x] Single-file SPA frontend served by FastAPI ([static/index.html](static/index.html))
-- [x] Auto-seeded sports catalog (18 sports) + admin-managed Add/Edit/Remove
+- [x] **Idempotent seeding** of canonical 18-sport catalog on every startup (no stale list, no manual script needed)
+- [x] Admin-managed Sport CRUD (Add / Edit / Remove) on top of the canonical seed
 - [x] **Full CRUD UI** for clubs, teams, matches, tournaments, sports — Add, Edit, soft-Delete (Deactivate / Cancel)
 - [x] Team rosters — add/remove players
 - [x] Tournament registration + unregister flow
 - [x] Match scoring + event log + status transitions
+- [x] **Player Rating & Ranking system** — DUPR-style 0–100 Elo per (player, sport, match_type), per-sport configuration, manual super-admin recalculation, global/club/age-group/division leaderboards, audited recalc jobs, rating history with SVG sparkline on player profiles. See [RATINGS.md](RATINGS.md).
+- [x] Dashboard "🏆 Top Rated Players" podium widget
 - [x] Inline modal error display (e.g. "Teams must be different") instead of toast-and-close
 - [x] Club color pickers + color swatches in clubs list
 - [x] Dashboard stats endpoints

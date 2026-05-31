@@ -299,6 +299,141 @@ class MatchOut(BaseModel):
         from_attributes = True
 
 
+# ─── Ratings ──────────────────────────────────────────────────────────────────
+
+class SportRatingConfigCreate(BaseModel):
+    sport_id: int
+    provisional_threshold: int = 5
+    season_reset_type: str = "none"
+    season_reset_factor: float = 0.3
+    visibility: str = "club_members"
+    k_factor_provisional: float = 32.0
+    k_factor_established: float = 16.0
+    k_factor_elite: float = 8.0
+    starting_rating: float = 50.0
+    max_rating_change_per_match: float = 15.0
+
+class SportRatingConfigUpdate(BaseModel):
+    provisional_threshold: Optional[int] = None
+    season_reset_type: Optional[str] = None
+    season_reset_factor: Optional[float] = None
+    visibility: Optional[str] = None
+    k_factor_provisional: Optional[float] = None
+    k_factor_established: Optional[float] = None
+    k_factor_elite: Optional[float] = None
+    starting_rating: Optional[float] = None
+    max_rating_change_per_match: Optional[float] = None
+    is_active: Optional[bool] = None
+
+class SportRatingConfigOut(BaseModel):
+    id: int
+    sport_id: int
+    sport_name: Optional[str] = None
+    provisional_threshold: int
+    season_reset_type: str
+    season_reset_factor: float
+    visibility: str
+    k_factor_provisional: float
+    k_factor_established: float
+    k_factor_elite: float
+    starting_rating: float
+    max_rating_change_per_match: float
+    is_active: bool
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PlayerRatingOut(BaseModel):
+    player_id: int
+    player_name: Optional[str] = None
+    sport_id: int
+    sport_name: Optional[str] = None
+    sport_icon: Optional[str] = None
+    match_type: str
+    rating: float
+    peak_rating: float
+    matches_played: int
+    matches_won: int
+    matches_drawn: int
+    matches_lost: int
+    is_provisional: bool
+    global_rank: Optional[int] = None
+    total_ranked: Optional[int] = None
+    last_match_at: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class RatingHistoryOut(BaseModel):
+    id: int
+    match_id: int
+    match_type: str
+    rating_before: float
+    rating_after: float
+    rating_delta: float
+    expected_score: float
+    actual_score: float
+    opponent_rating_at_time: float
+    k_factor_used: float
+    match_played_at: Optional[str] = None
+    opponent_label: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class LeaderboardEntryOut(BaseModel):
+    rank: int
+    player_id: int
+    player_name: Optional[str] = None
+    rating: float
+    peak_rating: float
+    matches_played: int
+    is_provisional: bool
+    trend: Optional[float] = None
+
+
+class LeaderboardOut(BaseModel):
+    sport_id: int
+    sport_name: Optional[str] = None
+    match_type: str
+    scope: str
+    scope_value: Optional[str] = None
+    total_ranked: int
+    entries: List[LeaderboardEntryOut]
+    generated_at: datetime
+
+
+class RecalculationJobOut(BaseModel):
+    id: int
+    triggered_by_id: Optional[int] = None
+    triggered_by_name: Optional[str] = None
+    sport_id: Optional[int] = None
+    sport_name: Optional[str] = None
+    status: str
+    matches_processed: int
+    players_updated: int
+    error_message: Optional[str] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    created_at: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class RecalculationRequest(BaseModel):
+    sport_id: Optional[int] = None
+
+
+class SeasonResetRequest(BaseModel):
+    confirm: bool
+
+
 # ─── Pagination ───────────────────────────────────────────────────────────────
 
 class PaginatedResponse(BaseModel):

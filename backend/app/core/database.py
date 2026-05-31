@@ -74,6 +74,50 @@ def execute_query(query: str, params: tuple = (), fetch_one: bool = False, fetch
             return rowcount
 
 
+# ── Canonical sport catalog — single source of truth ─────────────────────
+# Used by init_db() to keep names/icons/team sizes consistent across deploys.
+# Mirror this list when adding new defaults; existing rows are matched by name.
+DEFAULT_SPORTS = [
+    {"name": "Football",     "category": "team",      "max_team_size": 11, "min_team_size": 7,  "icon": "⚽"},
+    {"name": "Cricket",      "category": "team",      "max_team_size": 11, "min_team_size": 11, "icon": "🏏"},
+    {"name": "Basketball",   "category": "team",      "max_team_size": 5,  "min_team_size": 5,  "icon": "🏀"},
+    {"name": "Volleyball",   "category": "team",      "max_team_size": 6,  "min_team_size": 6,  "icon": "🏐"},
+    {"name": "Tennis",       "category": "racket",    "max_team_size": 2,  "min_team_size": 1,  "icon": "🎾"},
+    {"name": "Badminton",    "category": "racket",    "max_team_size": 2,  "min_team_size": 1,  "icon": "🏸"},
+    {"name": "Table Tennis", "category": "racket",    "max_team_size": 2,  "min_team_size": 1,  "icon": "🏓"},
+    {"name": "Pickleball",   "category": "racket",    "max_team_size": 2,  "min_team_size": 1,  "icon": "🏓"},
+    {"name": "Snooker",      "category": "precision", "max_team_size": 1,  "min_team_size": 1,  "icon": "🎱"},
+    {"name": "Billiards",    "category": "precision", "max_team_size": 1,  "min_team_size": 1,  "icon": "🎱"},
+    {"name": "Darts",        "category": "precision", "max_team_size": 1,  "min_team_size": 1,  "icon": "🎯"},
+    {"name": "Archery",      "category": "precision", "max_team_size": 1,  "min_team_size": 1,  "icon": "🏹"},
+    {"name": "Chess",        "category": "other",     "max_team_size": 1,  "min_team_size": 1,  "icon": "♟️"},
+    {"name": "Carrom",       "category": "other",     "max_team_size": 2,  "min_team_size": 1,  "icon": "🎯"},
+    {"name": "Swimming",     "category": "aquatic",   "max_team_size": 1,  "min_team_size": 1,  "icon": "🏊"},
+    {"name": "Rowing",       "category": "aquatic",   "max_team_size": 8,  "min_team_size": 1,  "icon": "🚣"},
+    {"name": "Foosball",     "category": "other",     "max_team_size": 2,  "min_team_size": 1,  "icon": "⚽"},
+    {"name": "Tug of War",   "category": "team",      "max_team_size": 8,  "min_team_size": 4,  "icon": "💪"},
+]
+
+
+def _seed_default_sports(cursor) -> None:
+    """Insert any missing canonical sports. Existing rows (by name) untouched."""
+    cursor.execute("SELECT name FROM sports")
+    existing = {row['name'] for row in cursor.fetchall()}
+    added = 0
+    for sport in DEFAULT_SPORTS:
+        if sport['name'] in existing:
+            continue
+        cursor.execute(
+            """INSERT INTO sports (name, category, max_team_size, min_team_size, icon, is_active)
+               VALUES (?, ?, ?, ?, ?, 1)""",
+            (sport['name'], sport['category'], sport['max_team_size'],
+             sport['min_team_size'], sport['icon']),
+        )
+        added += 1
+    if added:
+        logger.info("Seeded %s default sport(s) into 'sports' table", added)
+
+
 def init_db():
     """Initialize database schema."""
     logger.info("Initializing SQLite database at %s", DB_PATH)
@@ -174,6 +218,9 @@ def init_db():
                 icon TEXT
             )
         """)
+
+        # ── Seed canonical sports list (idempotent — match by name) ───
+        _seed_default_sports(cursor)
 
         # Teams table
         cursor.execute("""
@@ -288,6 +335,116 @@ def init_db():
                 FOREIGN KEY (match_id) REFERENCES matches(id),
                 FOREIGN KEY (team_id) REFERENCES teams(id),
                 FOREIGN KEY (player_id) REFERENCES users(id)
+            )
+        """)
+
+        # ── Ratings: per-sport configuration ──────────────────────────
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS sport_rating_configs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sport_id INTEGER NOT NULL UNIQUE,
+                provisional_threshold INTEGER NOT NULL DEFAULT 5,
+                season_reset_type TEXT NOT NULL DEFAULT 'none',
+                season_reset_factor REAL NOT NULL DEFAULT 0.3,
+                visibility TEXT NOT NULL DEFAULT 'club_members',
+                k_factor_provisional REAL NOT NULL DEFAULT 32.0,
+                k_factor_established REAL NOT NULL DEFAULT 16.0,
+                k_factor_elite REAL NOT NULL DEFAULT 8.0,
+                starting_rating REAL NOT NULL DEFAULT 50.0,
+                max_rating_change_per_match REAL NOT NULL DEFAULT 15.0,
+                is_active BOOLEAN DEFAULT 1,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (sport_id) REFERENCES sports(id)
+            )
+        """)
+
+        # ── Ratings: per player / sport / match-type ──────────────────
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS player_ratings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                player_id INTEGER NOT NULL,
+                sport_id INTEGER NOT NULL,
+                match_type TEXT NOT NULL,
+                rating REAL NOT NULL DEFAULT 50.0,
+                peak_rating REAL NOT NULL DEFAULT 50.0,
+                matches_played INTEGER NOT NULL DEFAULT 0,
+                matches_won INTEGER NOT NULL DEFAULT 0,
+                matches_drawn INTEGER NOT NULL DEFAULT 0,
+                matches_lost INTEGER NOT NULL DEFAULT 0,
+                is_provisional BOOLEAN DEFAULT 1,
+                is_active BOOLEAN DEFAULT 1,
+                last_match_at TEXT,
+                last_calculated_at TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(player_id, sport_id, match_type),
+                FOREIGN KEY (player_id) REFERENCES users(id),
+                FOREIGN KEY (sport_id) REFERENCES sports(id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_player_ratings_leaderboard ON player_ratings(sport_id, match_type, rating DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_player_ratings_player ON player_ratings(player_id)")
+
+        # ── Ratings: one row per player per match per recalculation ───
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS rating_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                player_id INTEGER NOT NULL,
+                sport_id INTEGER NOT NULL,
+                match_id INTEGER NOT NULL,
+                match_type TEXT NOT NULL,
+                rating_before REAL NOT NULL,
+                rating_after REAL NOT NULL,
+                rating_delta REAL NOT NULL,
+                expected_score REAL NOT NULL,
+                actual_score REAL NOT NULL,
+                opponent_rating_at_time REAL NOT NULL,
+                k_factor_used REAL NOT NULL,
+                match_played_at TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (player_id) REFERENCES users(id),
+                FOREIGN KEY (sport_id) REFERENCES sports(id),
+                FOREIGN KEY (match_id) REFERENCES matches(id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_rating_history_player ON rating_history(player_id, sport_id, match_played_at DESC)")
+
+        # ── Ratings: computed ranking snapshots ───────────────────────
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS player_rankings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                player_id INTEGER NOT NULL,
+                sport_id INTEGER NOT NULL,
+                match_type TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                scope_value TEXT,
+                rank INTEGER NOT NULL,
+                rating REAL NOT NULL,
+                total_ranked INTEGER NOT NULL,
+                calculated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(player_id, sport_id, match_type, scope, scope_value),
+                FOREIGN KEY (player_id) REFERENCES users(id),
+                FOREIGN KEY (sport_id) REFERENCES sports(id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_player_rankings_lookup ON player_rankings(sport_id, match_type, scope, rank ASC)")
+
+        # ── Ratings: recalculation job audit trail ────────────────────
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS recalculation_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                triggered_by_id INTEGER,
+                sport_id INTEGER,
+                status TEXT NOT NULL DEFAULT 'pending',
+                matches_processed INTEGER NOT NULL DEFAULT 0,
+                players_updated INTEGER NOT NULL DEFAULT 0,
+                error_message TEXT,
+                started_at TEXT,
+                completed_at TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (triggered_by_id) REFERENCES users(id),
+                FOREIGN KEY (sport_id) REFERENCES sports(id)
             )
         """)
 

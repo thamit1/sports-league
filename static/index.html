@@ -79,6 +79,36 @@ tr:last-child td{border-bottom:none}
 .form-control:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
 select.form-control{cursor:pointer}
 input[type="color"].form-control{padding:2px;height:38px;cursor:pointer;background:transparent}
+
+/* ── Ratings ── */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--gray-200);margin-bottom:16px}
+.tab{padding:8px 16px;background:none;border:none;border-bottom:2px solid transparent;font-size:13px;font-weight:600;color:var(--gray-500);cursor:pointer}
+.tab.active{color:var(--brand);border-bottom-color:var(--brand)}
+.tab:hover{color:var(--gray-900)}
+
+.seg{display:inline-flex;border:1px solid var(--gray-200);border-radius:8px;overflow:hidden;background:#fff}
+.seg-btn{padding:6px 14px;background:none;border:none;font-size:12px;font-weight:600;color:var(--gray-500);cursor:pointer}
+.seg-btn.active{background:var(--brand);color:#fff}
+
+.rating-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+.rating-card{background:#fff;border:1px solid var(--gray-200);border-radius:10px;padding:12px;cursor:pointer;transition:box-shadow .15s}
+.rating-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.06)}
+.rating-num{font-size:28px;font-weight:800;line-height:1;margin-top:4px}
+.rating-pill{display:inline-block;padding:2px 10px;border-radius:999px;font-weight:700;font-size:13px;background:#f1f5f9}
+.r-red    {color:#dc2626}.rating-pill.r-red   {background:#fee2e2;color:#991b1b}
+.r-orange {color:#ea580c}.rating-pill.r-orange{background:#fff7ed;color:#9a3412}
+.r-blue   {color:#2563eb}.rating-pill.r-blue  {background:#dbeafe;color:#1e40af}
+.r-green  {color:#16a34a}.rating-pill.r-green {background:#dcfce7;color:#166534}
+.r-gold   {color:#ca8a04}.rating-pill.r-gold  {background:#fef9c3;color:#854d0e}
+
+.podium{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.podium-card{background:#fff;border:1px solid var(--gray-200);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:box-shadow .15s}
+.podium-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.06)}
+.podium-medal{font-size:28px;margin-bottom:6px}
+.podium-name{font-weight:700;font-size:13px;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.spinner-sm{width:14px;height:14px;border:2px solid var(--gray-200);border-top-color:var(--brand);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .form-error{font-size:12px;color:var(--danger);margin-top:4px}
 
@@ -571,7 +601,67 @@ async function renderDashboard() {
         <tbody>${tRows}</tbody></table>
       </div>
     </div>
+  </div>
+  <div class="card" style="margin-top:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div style="font-weight:700;font-size:15px">🏆 Top Rated Players</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select class="form-control" id="dash-tr-sport" style="width:160px" onchange="loadDashboardTopRated()"></select>
+        <div class="seg">
+          <button class="seg-btn active" data-mt="singles" onclick="setDashboardMatchType('singles')">Singles</button>
+          <button class="seg-btn" data-mt="doubles" onclick="setDashboardMatchType('doubles')">Doubles</button>
+        </div>
+      </div>
+    </div>
+    <div id="dash-top-rated">${podiumLoading()}</div>
   </div>`;
+}
+
+function podiumLoading() {
+  return '<div style="text-align:center;color:#94a3b8;padding:24px">Loading…</div>';
+}
+
+async function setDashboardMatchType(mt) {
+  document.querySelectorAll('#dash-top-rated, .seg-btn').forEach(()=>{});
+  document.querySelectorAll('[data-mt]').forEach(b => b.classList.toggle('active', b.dataset.mt === mt));
+  State.dashMatchType = mt;
+  await loadDashboardTopRated();
+}
+
+async function loadDashboardTopRated() {
+  const sportSel = document.getElementById('dash-tr-sport');
+  const target   = document.getElementById('dash-top-rated');
+  if (!sportSel || !target) return;
+  const sportId = parseInt(sportSel.value);
+  const mt      = State.dashMatchType || 'singles';
+  if (!sportId) { target.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:24px">Pick a sport above.</div>'; return; }
+  target.innerHTML = podiumLoading();
+  try {
+    const lb = await API.get(`/ratings/leaderboard/${sportId}`, { match_type: mt, limit: 5 });
+    if (!lb.entries || !lb.entries.length) {
+      target.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:24px">No ratings calculated yet — trigger a recalculation first.</div>';
+      return;
+    }
+    target.innerHTML = `<div class="podium">${lb.entries.map(e => `
+      <div class="podium-card" onclick="navigate('player-detail',{id:${e.player_id}})">
+        <div class="podium-medal">${rankMedal(e.rank)}</div>
+        <div class="podium-name">${e.player_name||'—'}</div>
+        <div class="rating-num ${ratingClass(e.rating)}">${e.rating.toFixed(2)}</div>
+        <div style="font-size:11px;color:var(--gray-500)">${e.matches_played} matches${e.is_provisional ? ' · provisional' : ''}</div>
+      </div>`).join('')}</div>`;
+  } catch(e) {
+    target.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+  }
+}
+
+async function _hydrateDashboardSportSelect() {
+  const sel = document.getElementById('dash-tr-sport');
+  if (!sel) return;
+  try {
+    const sports = await API.get('/sports');
+    sel.innerHTML = sports.map(s => `<option value="${s.id}">${sportIcon(s.name)} ${s.name}</option>`).join('');
+    if (sports.length) loadDashboardTopRated();
+  } catch(e) {}
 }
 
 // ─── Players Page ─────────────────────────────────────────────────
@@ -703,6 +793,18 @@ async function renderPlayerDetail() {
           ${clubs.map(c=>`<tr><td><strong>${c.club_name||'—'}</strong></td><td>${c.jersey_no||'—'}</td><td>${c.position||'—'}</td><td>${badge(c.status)}</td><td>${fmtDate(c.joined_at)}</td></tr>`).join('')}
         </tbody></table>` : '<div class="empty-state"><div class="icon">🏢</div><p>Not a member of any club yet</p></div>'}
       </div>
+      <div class="card" style="margin-top:20px">
+        <div style="font-weight:700;font-size:15px;margin-bottom:16px">⭐ Sport Ratings</div>
+        <div id="player-ratings-cards"><div style="color:#94a3b8;font-size:13px">Loading…</div></div>
+      </div>
+      <div class="card" style="margin-top:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div style="font-weight:700;font-size:15px">📈 Rating History</div>
+          <select class="form-control" id="player-hist-sport" style="width:200px" onchange="loadPlayerRatingHistory(${id})"></select>
+        </div>
+        <div id="player-hist-chart"></div>
+        <div id="player-hist-rows" style="margin-top:12px"></div>
+      </div>
     </div>
   </div>
   ${isAdmin() ? `
@@ -733,6 +835,99 @@ async function renderPlayerDetail() {
     <button class="btn btn-primary" onclick="saveUserAdminChanges(${player.id})">Save changes</button>
   </div>` : ''}
 `;
+}
+
+async function loadPlayerRatings(playerId) {
+  const target = document.getElementById('player-ratings-cards');
+  if (!target) return;
+  try {
+    const ratings = await API.get(`/ratings/player/${playerId}`);
+    if (!ratings.length) {
+      target.innerHTML = '<div style="color:#94a3b8;font-size:13px">No ratings yet for this player. After matches are played and the admin triggers a recalculation, ratings will appear here.</div>';
+      return;
+    }
+    target.innerHTML = `<div class="rating-grid">${ratings.map(r => `
+      <div class="rating-card">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div style="font-size:24px">${r.sport_icon || sportIcon(r.sport_name)}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:13px">${r.sport_name||'—'}</div>
+            <div style="font-size:11px;color:var(--gray-500)">${r.match_type}${r.is_provisional ? ' · provisional' : ''}</div>
+          </div>
+        </div>
+        <div class="rating-num ${ratingClass(r.rating)}">${r.rating.toFixed(2)}</div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--gray-500);margin-top:6px">
+          <span>${r.global_rank ? '#' + r.global_rank + ' Global' : '—'}</span>
+          <span>${r.matches_played} matches · peak ${r.peak_rating.toFixed(2)}</span>
+        </div>
+      </div>`).join('')}</div>`;
+
+    // Hydrate the history sport dropdown with sports the player has a rating in
+    const sel = document.getElementById('player-hist-sport');
+    if (sel) {
+      const opts = {};
+      ratings.forEach(r => { opts[r.sport_id] = `${sportIcon(r.sport_name)} ${r.sport_name}`; });
+      sel.innerHTML = Object.entries(opts).map(([id, label]) => `<option value="${id}">${label}</option>`).join('');
+      if (Object.keys(opts).length) loadPlayerRatingHistory(playerId);
+    }
+  } catch (e) {
+    if (/403/.test(e.message) || /not visible/i.test(e.message)) {
+      target.innerHTML = '<div style="color:#94a3b8;font-size:13px">Ratings not visible for this player.</div>';
+    } else {
+      target.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+    }
+  }
+}
+
+async function loadPlayerRatingHistory(playerId) {
+  const sportSel = document.getElementById('player-hist-sport');
+  const chartEl  = document.getElementById('player-hist-chart');
+  const rowsEl   = document.getElementById('player-hist-rows');
+  if (!sportSel || !chartEl) return;
+  const sportId = parseInt(sportSel.value);
+  if (!sportId) { chartEl.innerHTML = ''; rowsEl.innerHTML = ''; return; }
+  try {
+    const history = await API.get(`/ratings/player/${playerId}/${sportId}/history`, { match_type: 'singles', limit: 20 });
+    if (!history.length) {
+      chartEl.innerHTML = '<div style="color:#94a3b8;font-size:13px;text-align:center;padding:12px">No history yet.</div>';
+      rowsEl.innerHTML = '';
+      return;
+    }
+    chartEl.innerHTML = sparklineSVG(history);
+    const last10 = history.slice(0, 10);
+    rowsEl.innerHTML = `<div style="font-weight:700;font-size:12px;color:var(--gray-500);margin:8px 0">LAST ${last10.length} MATCHES</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Date</th><th>Opponent</th><th>Before → After</th><th>Delta</th></tr></thead>
+        <tbody>${last10.map(h => `
+          <tr>
+            <td style="font-size:12px;color:var(--gray-500)">${fmtDate(h.match_played_at)}</td>
+            <td>${h.opponent_label || '—'}</td>
+            <td style="font-family:monospace">${h.rating_before.toFixed(2)} → ${h.rating_after.toFixed(2)}</td>
+            <td style="color:${h.rating_delta>=0?'#16a34a':'#dc2626'};font-weight:700">${h.rating_delta>=0?'+':''}${h.rating_delta.toFixed(2)}</td>
+          </tr>`).join('')}</tbody></table></div>`;
+  } catch (e) {
+    chartEl.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+    rowsEl.innerHTML = '';
+  }
+}
+
+function sparklineSVG(history) {
+  // History is in DESC order; reverse for chronological X-axis
+  const pts = [...history].reverse();
+  const W = 600, H = 80, PAD = 4;
+  const minR = 0, maxR = 100;
+  const xStep = pts.length > 1 ? (W - 2*PAD) / (pts.length - 1) : 0;
+  const yFor = r => H - PAD - ((r - minR) / (maxR - minR)) * (H - 2*PAD);
+  const coords = pts.map((p, i) => [PAD + i * xStep, yFor(p.rating_after)]);
+  const lineColor = pts[pts.length-1].rating_delta >= 0 ? '#16a34a' : '#dc2626';
+  const polyline = coords.map(c => c.join(',')).join(' ');
+  const ref = yFor(50);
+  const dots = coords.map((c, i) => `<circle cx="${c[0]}" cy="${c[1]}" r="3" fill="${lineColor}"><title>${pts[i].rating_after.toFixed(2)} (Δ ${pts[i].rating_delta>=0?'+':''}${pts[i].rating_delta.toFixed(2)})</title></circle>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:80px;background:#f8fafc;border-radius:6px">
+    <line x1="${PAD}" y1="${ref}" x2="${W-PAD}" y2="${ref}" stroke="#cbd5e1" stroke-dasharray="3,3"/>
+    <polyline points="${polyline}" fill="none" stroke="${lineColor}" stroke-width="2"/>
+    ${dots}
+  </svg>`;
 }
 
 async function requirePasswordReset(userId) {
@@ -1852,6 +2047,438 @@ async function submitAddClub() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+//  RATINGS PAGE (Leaderboard / Player Ratings / Configuration / Jobs)
+// ═══════════════════════════════════════════════════════════════════
+
+function ratingClass(r) {
+  if (r == null) return '';
+  if (r <= 30) return 'r-red';
+  if (r <= 50) return 'r-orange';
+  if (r <= 70) return 'r-blue';
+  if (r <= 85) return 'r-green';
+  return 'r-gold';
+}
+function rankMedal(rank) {
+  if (rank === 1) return '🥇';
+  if (rank === 2) return '🥈';
+  if (rank === 3) return '🥉';
+  return `<span style="font-weight:800;font-size:18px">#${rank}</span>`;
+}
+
+async function renderRatings() {
+  const tab = State.pageParams?.tab || 'leaderboard';
+  const tabs = [
+    { id: 'leaderboard', label: 'Leaderboard' },
+    { id: 'player',      label: 'Player Ratings' },
+  ];
+  if (isSuperAdmin()) {
+    tabs.push({ id: 'config', label: 'Configuration' });
+    tabs.push({ id: 'jobs',   label: 'Jobs' });
+  }
+
+  return `
+  <div class="page-header">
+    <div><div class="page-title">⭐ Ratings & Rankings</div><div class="page-sub">DUPR-style player ratings (0–100 scale)</div></div>
+  </div>
+  <div class="tabs">
+    ${tabs.map(t => `<button class="tab ${t.id===tab?'active':''}" onclick="navigate('ratings',{tab:'${t.id}'})">${t.label}</button>`).join('')}
+  </div>
+  <div id="ratings-tab-body"><div style="text-align:center;color:#94a3b8;padding:24px">Loading…</div></div>`;
+}
+
+async function hydrateRatingsPage() {
+  const tab = State.pageParams?.tab || 'leaderboard';
+  const body = document.getElementById('ratings-tab-body');
+  if (!body) return;
+  body.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:24px">Loading…</div>';
+  try {
+    if (tab === 'leaderboard')  body.innerHTML = await renderRatingsLeaderboardTab();
+    else if (tab === 'player')  body.innerHTML = await renderRatingsPlayerTab();
+    else if (tab === 'config')  body.innerHTML = await renderRatingsConfigTab();
+    else if (tab === 'jobs')    body.innerHTML = await renderRatingsJobsTab();
+    if (tab === 'jobs') startJobsAutoRefresh();
+    else stopJobsAutoRefresh();
+  } catch (e) {
+    body.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+  }
+}
+
+// ── Leaderboard tab ──────────────────────────────────────────────────
+
+async function renderRatingsLeaderboardTab() {
+  const sports = await API.get('/sports');
+  if (!sports.length) return '<div style="color:#94a3b8;padding:24px;text-align:center">No sports configured yet.</div>';
+  const def = State.lbSportId || sports[0].id;
+  State.lbSportId = def;
+  State.lbMatchType = State.lbMatchType || 'singles';
+  State.lbScope     = State.lbScope     || 'global';
+
+  const html = `
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Sport</label>
+        <select class="form-control" id="lb-sport" onchange="State.lbSportId=parseInt(this.value);refreshLeaderboard()">
+          ${sports.map(s => `<option value="${s.id}" ${s.id===def?'selected':''}>${sportIcon(s.name)} ${s.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Match Type</label>
+        <div class="seg">
+          <button class="seg-btn ${State.lbMatchType==='singles'?'active':''}" onclick="State.lbMatchType='singles';refreshLeaderboard()">Singles</button>
+          <button class="seg-btn ${State.lbMatchType==='doubles'?'active':''}" onclick="State.lbMatchType='doubles';refreshLeaderboard()">Doubles</button>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Scope</label>
+        <select class="form-control" id="lb-scope" onchange="State.lbScope=this.value;State.lbScopeValue='';refreshLeaderboard()">
+          <option value="global"    ${State.lbScope==='global'?'selected':''}>Global</option>
+          <option value="club"      ${State.lbScope==='club'?'selected':''}>By Club</option>
+          <option value="age_group" ${State.lbScope==='age_group'?'selected':''}>By Age Group</option>
+          <option value="division"  ${State.lbScope==='division'?'selected':''}>By Division</option>
+        </select>
+      </div>
+      <div class="form-group" id="lb-scope-value-wrap" style="margin-bottom:0;${State.lbScope==='global'?'display:none':''}">
+        <label class="form-label">Scope Value</label>
+        <input class="form-control" id="lb-scope-value" value="${State.lbScopeValue||''}" placeholder="e.g. 1 / U18 / Division A" onchange="State.lbScopeValue=this.value;refreshLeaderboard()"/>
+      </div>
+    </div>
+  </div>
+  <div id="lb-body"><div style="text-align:center;color:#94a3b8;padding:24px">Loading…</div></div>`;
+  // Defer the actual fetch so the controls render first
+  setTimeout(refreshLeaderboard, 0);
+  return html;
+}
+
+async function refreshLeaderboard() {
+  const body = document.getElementById('lb-body');
+  if (!body) return;
+  body.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:24px">Loading…</div>';
+  try {
+    const params = { match_type: State.lbMatchType, scope: State.lbScope, limit: 50 };
+    if (State.lbScope !== 'global') {
+      if (!State.lbScopeValue) { body.innerHTML = '<div style="color:#94a3b8;padding:24px;text-align:center">Enter a scope value above.</div>'; return; }
+      params.scope_value = State.lbScopeValue;
+    }
+    const lb = await API.get(`/ratings/leaderboard/${State.lbSportId}`, params);
+    if (!lb.entries.length) {
+      body.innerHTML = '<div style="color:#94a3b8;padding:24px;text-align:center">No ranked players in this scope. Trigger a recalculation (super admin) after matches are completed.</div>';
+      return;
+    }
+    body.innerHTML = `<div class="card" style="padding:0;overflow:hidden">
+      <div class="table-wrap"><table>
+        <thead><tr><th>Rank</th><th>Player</th><th>Rating</th><th>Peak</th><th>Matches</th><th>Status</th><th>Trend</th></tr></thead>
+        <tbody>${lb.entries.map(e => `
+          <tr class="clickable" onclick="navigate('player-detail',{id:${e.player_id}})">
+            <td>${rankMedal(e.rank)}</td>
+            <td><strong>${e.player_name||'—'}</strong></td>
+            <td><span class="rating-pill ${ratingClass(e.rating)}">${e.rating.toFixed(2)}</span></td>
+            <td>${e.peak_rating.toFixed(2)}</td>
+            <td>${e.matches_played}</td>
+            <td>${e.is_provisional ? '<span class="badge" style="background:#fef3c7;color:#92400e">Provisional</span>' : '<span class="badge" style="background:#dcfce7;color:#166534">Reliable</span>'}</td>
+            <td>${e.trend == null ? '—' : `<span style="color:${e.trend>=0?'#16a34a':'#dc2626'};font-weight:700">${e.trend>=0?'+':''}${e.trend.toFixed(2)}</span>`}</td>
+          </tr>`).join('')}</tbody>
+      </table></div>
+    </div>`;
+  } catch (e) {
+    body.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+  }
+}
+
+// ── Player Ratings tab ───────────────────────────────────────────────
+
+async function renderRatingsPlayerTab() {
+  return `
+  <div class="card" style="margin-bottom:16px">
+    <div class="form-group" style="margin-bottom:0">
+      <label class="form-label">Search Player</label>
+      <input class="form-control" id="pr-search" placeholder="Start typing a name…" oninput="ratingsPlayerSearchDebounced(this.value)"/>
+    </div>
+  </div>
+  <div id="pr-results" style="margin-bottom:16px"></div>
+  <div id="pr-body"><div style="color:#94a3b8;padding:24px;text-align:center">Pick a player to see their ratings.</div></div>`;
+}
+
+let _ratingsPlayerSearchTimer = null;
+function ratingsPlayerSearchDebounced(q) {
+  clearTimeout(_ratingsPlayerSearchTimer);
+  _ratingsPlayerSearchTimer = setTimeout(() => doRatingsPlayerSearch(q), 300);
+}
+async function doRatingsPlayerSearch(q) {
+  const results = document.getElementById('pr-results');
+  if (!results) return;
+  if (!q || q.length < 2) { results.innerHTML = ''; return; }
+  try {
+    const players = await API.get('/players/', { search: q, limit: 8 });
+    if (!players.length) { results.innerHTML = '<div style="color:#94a3b8;padding:8px">No matches.</div>'; return; }
+    results.innerHTML = `<div class="card" style="padding:0">${players.map(p => `
+      <div style="padding:10px 14px;border-bottom:1px solid var(--gray-100);cursor:pointer" onclick="loadRatingsPlayer(${p.id},'${(p.full_name||'').replace(/'/g,'\\\'')}')">
+        <strong>${p.full_name||'—'}</strong> <span style="color:var(--gray-500);font-size:11px">${p.email||''}</span>
+      </div>`).join('')}</div>`;
+  } catch(e) {
+    results.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+  }
+}
+async function loadRatingsPlayer(playerId, name) {
+  const body = document.getElementById('pr-body');
+  document.getElementById('pr-results').innerHTML = '';
+  body.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:24px">Loading…</div>';
+  try {
+    const ratings = await API.get(`/ratings/player/${playerId}`);
+    if (!ratings.length) { body.innerHTML = `<div style="color:#94a3b8;padding:24px;text-align:center">${name} has no ratings yet.</div>`; return; }
+    body.innerHTML = `<div style="font-weight:700;font-size:15px;margin-bottom:12px">${name}</div>
+      <div class="rating-grid">${ratings.map(r => `
+        <div class="rating-card" onclick="navigate('player-detail',{id:${playerId}})">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <div style="font-size:24px">${r.sport_icon||sportIcon(r.sport_name)}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:700;font-size:13px">${r.sport_name||'—'}</div>
+              <div style="font-size:11px;color:var(--gray-500)">${r.match_type}${r.is_provisional?' · provisional':''}</div>
+            </div>
+          </div>
+          <div class="rating-num ${ratingClass(r.rating)}">${r.rating.toFixed(2)}</div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--gray-500);margin-top:6px">
+            <span>${r.global_rank ? '#'+r.global_rank+' Global' : '—'}</span>
+            <span>${r.matches_played} matches</span>
+          </div>
+        </div>`).join('')}</div>`;
+  } catch(e) {
+    body.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+  }
+}
+
+// ── Configuration tab (super_admin) ──────────────────────────────────
+
+async function renderRatingsConfigTab() {
+  const [configs, sports] = await Promise.all([API.get('/ratings/config'), API.get('/sports')]);
+  const configuredIds = new Set(configs.map(c => c.sport_id));
+  const unconfigured = sports.filter(s => !configuredIds.has(s.id));
+
+  const addBtn = unconfigured.length
+    ? `<button class="btn btn-primary" onclick="openModal('add-rconfig-modal')">+ Add Config</button>` : '';
+
+  const rows = configs.map(c => `
+    <tr>
+      <td><strong>${c.sport_name||'—'}</strong></td>
+      <td>${c.provisional_threshold}</td>
+      <td style="font-family:monospace;font-size:11px">P:${c.k_factor_provisional} / E:${c.k_factor_established} / X:${c.k_factor_elite}</td>
+      <td>${c.season_reset_type}${c.season_reset_type==='soft'?' ('+c.season_reset_factor+')':''}</td>
+      <td>${c.visibility.replace('_',' ')}</td>
+      <td>${badge(c.is_active?'active':'inactive')}</td>
+      <td><button class="btn btn-secondary btn-sm" onclick='openEditRConfig(${JSON.stringify(c).replace(/'/g,"&#39;")})'>Edit</button></td>
+    </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;padding:24px;color:#94a3b8">No configs yet</td></tr>';
+
+  const sportOpts = unconfigured.map(s => `<option value="${s.id}">${sportIcon(s.name)} ${s.name}</option>`).join('');
+
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div style="font-weight:700">Per-Sport Rating Configuration</div>
+    ${addBtn}
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap"><table>
+      <thead><tr><th>Sport</th><th>Provisional ≥</th><th>K Factors</th><th>Season Reset</th><th>Visibility</th><th>Status</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+  </div>
+  ${modalHTML('add-rconfig-modal','Add Sport Config',`
+    <form>
+      <div class="form-group"><label class="form-label">Sport</label>
+        <select class="form-control" id="rc-add-sport" required>${sportOpts||'<option disabled>No unconfigured sports left</option>'}</select>
+      </div>
+      ${configFormFields('rc-add')}
+    </form>`,
+    `<button class="btn btn-secondary" onclick="closeModal('add-rconfig-modal')">Cancel</button>
+     <button class="btn btn-primary" onclick="submitAddRConfig()">Create</button>`
+  )}
+  ${modalHTML('edit-rconfig-modal','Edit Sport Config',`
+    <form>
+      <input type="hidden" id="rc-edit-sport-id"/>
+      <div class="form-group"><label class="form-label">Sport</label><input class="form-control" id="rc-edit-sport-name" disabled/></div>
+      ${configFormFields('rc-edit')}
+      <div class="form-group"><label class="form-label">Active</label>
+        <select class="form-control" id="rc-edit-active"><option value="1">Yes</option><option value="0">No</option></select>
+      </div>
+    </form>`,
+    `<button class="btn btn-secondary" onclick="closeModal('edit-rconfig-modal')">Cancel</button>
+     <button class="btn btn-primary" onclick="submitEditRConfig()">Save Changes</button>`
+  )}`;
+}
+
+function configFormFields(prefix) {
+  return `
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Provisional Threshold</label><input class="form-control" type="number" id="${prefix}-prov" value="5" min="1"/></div>
+    <div class="form-group"><label class="form-label">Starting Rating</label><input class="form-control" type="number" step="0.01" id="${prefix}-start" value="50"/></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">K (Provisional)</label><input class="form-control" type="number" step="0.01" id="${prefix}-kprov" value="32"/></div>
+    <div class="form-group"><label class="form-label">K (Established)</label><input class="form-control" type="number" step="0.01" id="${prefix}-kest" value="16"/></div>
+    <div class="form-group"><label class="form-label">K (Elite)</label><input class="form-control" type="number" step="0.01" id="${prefix}-kelite" value="8"/></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Max Δ / Match</label><input class="form-control" type="number" step="0.01" id="${prefix}-max" value="15"/></div>
+    <div class="form-group"><label class="form-label">Visibility</label>
+      <select class="form-control" id="${prefix}-vis">
+        <option value="public">Public</option><option value="club_members" selected>Club Members</option><option value="admins_only">Admins Only</option>
+      </select>
+    </div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Season Reset</label>
+      <select class="form-control" id="${prefix}-reset">
+        <option value="none" selected>None</option><option value="soft">Soft</option><option value="hard">Hard</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">Soft Reset Factor (0–1)</label><input class="form-control" type="number" step="0.01" id="${prefix}-resetf" value="0.3"/></div>
+  </div>`;
+}
+
+function openEditRConfig(c) {
+  document.getElementById('rc-edit-sport-id').value   = c.sport_id;
+  document.getElementById('rc-edit-sport-name').value = c.sport_name || '';
+  document.getElementById('rc-edit-prov').value   = c.provisional_threshold;
+  document.getElementById('rc-edit-start').value  = c.starting_rating;
+  document.getElementById('rc-edit-kprov').value  = c.k_factor_provisional;
+  document.getElementById('rc-edit-kest').value   = c.k_factor_established;
+  document.getElementById('rc-edit-kelite').value = c.k_factor_elite;
+  document.getElementById('rc-edit-max').value    = c.max_rating_change_per_match;
+  document.getElementById('rc-edit-vis').value    = c.visibility;
+  document.getElementById('rc-edit-reset').value  = c.season_reset_type;
+  document.getElementById('rc-edit-resetf').value = c.season_reset_factor;
+  document.getElementById('rc-edit-active').value = c.is_active ? '1' : '0';
+  openModal('edit-rconfig-modal');
+}
+
+async function submitAddRConfig() {
+  try {
+    const sport_id = parseInt(document.getElementById('rc-add-sport').value);
+    await API.post('/ratings/config', _collectConfigFields('rc-add', { sport_id }));
+    closeModal('add-rconfig-modal');
+    showAlert('Config created!', 'success');
+    hydrateRatingsPage();
+  } catch(e) { showAlert(e.message); }
+}
+async function submitEditRConfig() {
+  const sport_id = document.getElementById('rc-edit-sport-id').value;
+  try {
+    const body = _collectConfigFields('rc-edit');
+    body.is_active = document.getElementById('rc-edit-active').value === '1';
+    await API.patch(`/ratings/config/${sport_id}`, body);
+    closeModal('edit-rconfig-modal');
+    showAlert('Config updated!', 'success');
+    hydrateRatingsPage();
+  } catch(e) { showAlert(e.message); }
+}
+function _collectConfigFields(prefix, base = {}) {
+  return {
+    ...base,
+    provisional_threshold:        parseInt(document.getElementById(prefix+'-prov').value)   || 5,
+    starting_rating:              parseFloat(document.getElementById(prefix+'-start').value) || 50,
+    k_factor_provisional:         parseFloat(document.getElementById(prefix+'-kprov').value) || 32,
+    k_factor_established:         parseFloat(document.getElementById(prefix+'-kest').value)  || 16,
+    k_factor_elite:               parseFloat(document.getElementById(prefix+'-kelite').value) || 8,
+    max_rating_change_per_match:  parseFloat(document.getElementById(prefix+'-max').value)   || 15,
+    visibility:                   document.getElementById(prefix+'-vis').value,
+    season_reset_type:            document.getElementById(prefix+'-reset').value,
+    season_reset_factor:          parseFloat(document.getElementById(prefix+'-resetf').value) || 0.3,
+  };
+}
+
+// ── Jobs tab (super_admin) ───────────────────────────────────────────
+
+let _jobsRefreshTimer = null;
+function startJobsAutoRefresh() {
+  stopJobsAutoRefresh();
+  _jobsRefreshTimer = setInterval(async () => {
+    try {
+      const jobs = await API.get('/ratings/jobs', { limit: 20 });
+      if (jobs.some(j => j.status === 'running' || j.status === 'pending')) {
+        const body = document.getElementById('jobs-table');
+        if (body) body.outerHTML = jobsTableHTML(jobs);
+      } else {
+        // stable: stop polling
+        stopJobsAutoRefresh();
+      }
+    } catch(e) {}
+  }, 5000);
+}
+function stopJobsAutoRefresh() {
+  if (_jobsRefreshTimer) { clearInterval(_jobsRefreshTimer); _jobsRefreshTimer = null; }
+}
+
+async function renderRatingsJobsTab() {
+  const [jobs, sports] = await Promise.all([API.get('/ratings/jobs', { limit: 20 }), API.get('/sports')]);
+  const sportOpts = `<option value="">All Sports</option>` +
+    sports.map(s => `<option value="${s.id}">${sportIcon(s.name)} ${s.name}</option>`).join('');
+
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div style="font-weight:700">Recalculation Jobs</div>
+    <button class="btn btn-primary" onclick="openModal('recalc-modal')">🔄 Trigger Recalculation</button>
+  </div>
+  ${jobsTableHTML(jobs)}
+  ${modalHTML('recalc-modal','Trigger Recalculation',`
+    <div class="form-group">
+      <label class="form-label">Sport</label>
+      <select class="form-control" id="recalc-sport">${sportOpts}</select>
+    </div>
+    <div class="alert alert-warning" style="background:#fef3c7;color:#92400e;padding:10px;border-radius:6px;font-size:12px">
+      ⚠ This resets and recalculates all ratings for the selected sport(s). The old history is wiped and replayed from match logs. This cannot be undone.
+    </div>
+    <div id="recalc-status" style="margin-top:12px;display:none"></div>`,
+    `<button class="btn btn-secondary" onclick="closeModal('recalc-modal')">Cancel</button>
+     <button class="btn btn-danger" id="recalc-confirm-btn" onclick="confirmRecalculation()">Run Recalculation</button>`
+  )}`;
+}
+
+function jobsTableHTML(jobs) {
+  const rows = jobs.map(j => {
+    const dur = (j.started_at && j.completed_at)
+      ? Math.max(0, (new Date(j.completed_at) - new Date(j.started_at)) / 1000).toFixed(1) + 's'
+      : '—';
+    const statusColor = ({pending:'#94a3b8',running:'#f59e0b',completed:'#16a34a',failed:'#dc2626'})[j.status] || '#94a3b8';
+    return `<tr>
+      <td>#${j.id}</td>
+      <td>${j.triggered_by_name||'—'}</td>
+      <td>${j.sport_name||'<em>All Sports</em>'}</td>
+      <td><span style="display:inline-block;padding:2px 8px;border-radius:10px;background:${statusColor};color:#fff;font-size:11px;font-weight:700">${j.status}</span></td>
+      <td>${j.matches_processed}</td>
+      <td>${j.players_updated}</td>
+      <td>${dur}</td>
+      <td style="font-size:12px;color:var(--gray-500)">${fmtDateTime(j.created_at)}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="8" style="text-align:center;padding:24px;color:#94a3b8">No jobs yet</td></tr>';
+  return `<div id="jobs-table" class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap"><table>
+      <thead><tr><th>ID</th><th>Triggered By</th><th>Sport</th><th>Status</th><th>Matches</th><th>Players</th><th>Duration</th><th>When</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+  </div>`;
+}
+
+async function confirmRecalculation() {
+  const sportVal = document.getElementById('recalc-sport').value;
+  const sport_id = sportVal ? parseInt(sportVal) : null;
+  const status = document.getElementById('recalc-status');
+  const btn    = document.getElementById('recalc-confirm-btn');
+  status.style.display = 'block';
+  status.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:var(--gray-500);font-size:12px"><div class="spinner-sm"></div> Running… (this may take a few seconds)</div>';
+  btn.disabled = true;
+  try {
+    const start = Date.now();
+    const job = await API.post('/ratings/recalculate', { sport_id });
+    const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+    status.innerHTML = `<div class="alert alert-success" style="background:#dcfce7;color:#166534;padding:10px;border-radius:6px;font-size:13px">
+      ✅ Done in ${elapsed}s — ${job.matches_processed} matches processed, ${job.players_updated} player updates.</div>`;
+    setTimeout(() => { closeModal('recalc-modal'); hydrateRatingsPage(); }, 1200);
+  } catch (e) {
+    status.innerHTML = `<div class="alert alert-error" style="background:#fee2e2;color:#991b1b;padding:10px;border-radius:6px;font-size:13px">❌ ${e.message}</div>`;
+    btn.disabled = false;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
 //  SHELL: Sidebar + Topbar
 // ═══════════════════════════════════════════════════════════════════
 const NAV_ITEMS = [
@@ -1859,6 +2486,7 @@ const NAV_ITEMS = [
   { id:'players',     label:'Players',     icon:'👤' },
   { id:'teams',       label:'Teams',       icon:'🛡️' },
   { id:'matches',     label:'Matches',     icon:'⚔️' },
+  { id:'ratings',     label:'Ratings',     icon:'⭐' },
   { id:'tournaments', label:'Tournaments', icon:'🏆' },
   { id:'sports',      label:'Sports',      icon:'🏅' },
   { id:'clubs',       label:'Clubs',       icon:'🏢' },
@@ -1951,6 +2579,7 @@ async function render() {
       case 'tournaments':       pageHTML = await renderTournaments();      break;
       case 'tournament-detail': pageHTML = await renderTournamentDetail(); break;
       case 'sports':            pageHTML = await renderSports();           break;
+      case 'ratings':           pageHTML = await renderRatings();          break;
       case 'clubs':             pageHTML = await renderClubs();            break;
       default:                  pageHTML = await renderDashboard();
     }
@@ -1960,6 +2589,13 @@ async function render() {
 
   // Re-render with full content
   root.innerHTML = renderShell(pageHTML);
+
+  // Post-mount hooks for pages that load data into placeholder slots
+  try {
+    if (State.currentPage === 'dashboard')           _hydrateDashboardSportSelect();
+    else if (State.currentPage === 'player-detail')  loadPlayerRatings(State.pageParams?.id);
+    else if (State.currentPage === 'ratings')        hydrateRatingsPage();
+  } catch(e) { /* non-fatal */ }
   if (State.currentPage === 'change-password') {
     bindChangePassword();
   }

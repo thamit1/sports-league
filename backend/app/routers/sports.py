@@ -8,27 +8,8 @@ import json
 
 router = APIRouter()
 
-# Default sports to seed on first run
-DEFAULT_SPORTS = [
-    {"name": "Football",     "category": "team",      "max_team_size": 11, "min_team_size": 7,  "icon": "⚽"},
-    {"name": "Cricket",      "category": "team",      "max_team_size": 11, "min_team_size": 11, "icon": "🏏"},
-    {"name": "Basketball",   "category": "team",      "max_team_size": 5,  "min_team_size": 5,  "icon": "🏀"},
-    {"name": "Volleyball",   "category": "team",      "max_team_size": 6,  "min_team_size": 6,  "icon": "🏐"},
-    {"name": "Tennis",       "category": "racket",    "max_team_size": 2,  "min_team_size": 1,  "icon": "🎾"},
-    {"name": "Badminton",    "category": "racket",    "max_team_size": 2,  "min_team_size": 1,  "icon": "🏸"},
-    {"name": "Table Tennis", "category": "racket",    "max_team_size": 2,  "min_team_size": 1,  "icon": "🏓"},
-    {"name": "Pickleball",   "category": "racket",    "max_team_size": 2,  "min_team_size": 1,  "icon": "🏓"},
-    {"name": "Snooker",      "category": "precision", "max_team_size": 1,  "min_team_size": 1,  "icon": "🎱"},
-    {"name": "Billiards",    "category": "precision", "max_team_size": 1,  "min_team_size": 1,  "icon": "🎱"},
-    {"name": "Darts",        "category": "precision", "max_team_size": 1,  "min_team_size": 1,  "icon": "🎯"},
-    {"name": "Archery",      "category": "precision", "max_team_size": 1,  "min_team_size": 1,  "icon": "🏹"},
-    {"name": "Chess",        "category": "other",     "max_team_size": 1,  "min_team_size": 1,  "icon": "♟️"},
-    {"name": "Carrom",       "category": "other",     "max_team_size": 2,  "min_team_size": 1,  "icon": "🎯"},
-    {"name": "Swimming",     "category": "aquatic",   "max_team_size": 1,  "min_team_size": 1,  "icon": "🏊"},
-    {"name": "Rowing",       "category": "aquatic",   "max_team_size": 8,  "min_team_size": 1,  "icon": "🚣"},
-    {"name": "Foosball",     "category": "other",     "max_team_size": 2,  "min_team_size": 1,  "icon": "⚽"},
-    {"name": "Tug of War",   "category": "team",      "max_team_size": 8,  "min_team_size": 4,  "icon": "💪"},
-]
+# Canonical sport catalog now lives in app.core.database.DEFAULT_SPORTS and
+# is seeded idempotently on every app startup via init_db().
 
 
 @router.get("", response_model=List[dict])
@@ -38,25 +19,6 @@ def list_sports(_=Depends(get_current_user)):
         "SELECT * FROM sports WHERE is_active = 1",
         fetch_all=True
     )
-
-    if not sports_rows:
-        # Seed on first call
-        for sport in DEFAULT_SPORTS:
-            execute_query(
-                """INSERT INTO sports (name, category, max_team_size, min_team_size, icon, is_active)
-                   VALUES (?, ?, ?, ?, ?, 1)""",
-                (
-                    sport['name'],
-                    sport['category'],
-                    sport['max_team_size'],
-                    sport['min_team_size'],
-                    sport['icon'],
-                )
-            )
-        sports_rows = execute_query(
-            "SELECT * FROM sports WHERE is_active = 1",
-            fetch_all=True
-        )
 
     return [
         {
