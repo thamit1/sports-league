@@ -1,0 +1,1577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>SLMS Rating System — Know Your Game</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+<style>
+/* ═══════════════════════════════════════════
+   TOKENS
+═══════════════════════════════════════════ */
+:root {
+  --blue-950: #0a1628;
+  --blue-900: #0f2044;
+  --blue-800: #1a3a6e;
+  --blue-700: #1d4ed8;
+  --blue-600: #2563eb;
+  --blue-500: #3b82f6;
+  --blue-400: #60a5fa;
+  --blue-300: #93c5fd;
+  --blue-100: #dbeafe;
+  --blue-50:  #eff6ff;
+  --gold:     #f59e0b;
+  --gold-light: #fef3c7;
+  --silver:   #94a3b8;
+  --bronze:   #b45309;
+  --white:    #ffffff;
+  --gray-50:  #f8fafc;
+  --gray-100: #f1f5f9;
+  --gray-200: #e2e8f0;
+  --gray-600: #475569;
+  --gray-800: #1e293b;
+  --success:  #10b981;
+  --danger:   #ef4444;
+
+  --font-display: 'Bebas Neue', sans-serif;
+  --font-body:    'Outfit', sans-serif;
+  --font-mono:    'JetBrains Mono', monospace;
+}
+
+/* ═══════════════════════════════════════════
+   RESET & BASE
+═══════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--font-body);
+  background: var(--white);
+  color: var(--gray-800);
+  overflow-x: hidden;
+  line-height: 1.6;
+}
+
+/* ═══════════════════════════════════════════
+   UTILITY
+═══════════════════════════════════════════ */
+.container { max-width: 1140px; margin: 0 auto; padding: 0 32px; }
+.section { padding: 100px 0; }
+.section-alt { background: var(--gray-50); }
+.tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--blue-100); color: var(--blue-700);
+  font-size: 12px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; padding: 6px 14px; border-radius: 99px;
+  margin-bottom: 20px;
+}
+.tag .dot { width: 6px; height: 6px; background: var(--blue-600); border-radius: 50%; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ═══════════════════════════════════════════
+   NAV
+═══════════════════════════════════════════ */
+nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+  background: rgba(255,255,255,.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--gray-200);
+  height: 64px; display: flex; align-items: center;
+  transition: box-shadow .3s;
+}
+nav.scrolled { box-shadow: 0 4px 24px rgba(37,99,235,.08); }
+.nav-inner {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; max-width: 1140px; margin: 0 auto; padding: 0 32px;
+}
+.nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.nav-logo .icon {
+  width: 36px; height: 36px; background: var(--blue-600);
+  border-radius: 10px; display: flex; align-items: center;
+  justify-content: center; font-size: 18px;
+}
+.nav-logo span { font-family: var(--font-display); font-size: 22px; letter-spacing: .05em; color: var(--blue-900); }
+.nav-links { display: flex; align-items: center; gap: 32px; }
+.nav-links a {
+  text-decoration: none; font-size: 14px; font-weight: 500;
+  color: var(--gray-600); transition: color .2s;
+}
+.nav-links a:hover { color: var(--blue-600); }
+.nav-cta {
+  background: var(--blue-600); color: white !important;
+  padding: 8px 20px; border-radius: 8px; font-weight: 600 !important;
+  transition: background .2s !important;
+}
+.nav-cta:hover { background: var(--blue-700) !important; color: white !important; }
+
+/* ═══════════════════════════════════════════
+   HERO
+═══════════════════════════════════════════ */
+.hero {
+  min-height: 100vh;
+  background: linear-gradient(160deg, var(--blue-950) 0%, var(--blue-900) 40%, var(--blue-800) 100%);
+  display: flex; align-items: center;
+  position: relative; overflow: hidden;
+  padding-top: 64px;
+}
+
+/* grid pattern */
+.hero::before {
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(59,130,246,.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59,130,246,.08) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+
+/* glow blobs */
+.hero-glow {
+  position: absolute; border-radius: 50%; filter: blur(80px); pointer-events: none;
+}
+.hero-glow-1 {
+  width: 600px; height: 600px;
+  background: rgba(37,99,235,.25);
+  top: -100px; right: -100px;
+  animation: float 8s ease-in-out infinite;
+}
+.hero-glow-2 {
+  width: 400px; height: 400px;
+  background: rgba(96,165,250,.15);
+  bottom: 0; left: 10%;
+  animation: float 10s ease-in-out infinite reverse;
+}
+@keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-30px)} }
+
+.hero-inner {
+  position: relative; z-index: 1;
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 60px; align-items: center;
+  max-width: 1140px; margin: 0 auto; padding: 80px 32px;
+}
+
+.hero-eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(96,165,250,.15); border: 1px solid rgba(96,165,250,.3);
+  color: var(--blue-300); font-size: 12px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase;
+  padding: 6px 16px; border-radius: 99px; margin-bottom: 24px;
+}
+.hero-eyebrow .dot { width: 6px; height: 6px; background: var(--blue-400); border-radius: 50%; animation: pulse 2s infinite; }
+
+.hero h1 {
+  font-family: var(--font-display);
+  font-size: clamp(52px, 7vw, 88px);
+  line-height: .95;
+  letter-spacing: .02em;
+  color: var(--white);
+  margin-bottom: 8px;
+}
+.hero h1 .accent { color: var(--blue-400); }
+.hero-sub {
+  font-size: 18px; font-weight: 300; color: rgba(255,255,255,.7);
+  margin-bottom: 40px; max-width: 480px; line-height: 1.7;
+}
+
+.hero-actions { display: flex; gap: 14px; flex-wrap: wrap; }
+.btn-hero-primary {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--blue-500); color: white;
+  padding: 14px 28px; border-radius: 10px;
+  font-size: 15px; font-weight: 700;
+  text-decoration: none; transition: all .2s;
+  box-shadow: 0 0 0 0 rgba(96,165,250,.4);
+}
+.btn-hero-primary:hover {
+  background: var(--blue-400); transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(59,130,246,.4);
+}
+.btn-hero-secondary {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,.08); color: rgba(255,255,255,.9);
+  border: 1px solid rgba(255,255,255,.2);
+  padding: 14px 28px; border-radius: 10px;
+  font-size: 15px; font-weight: 600;
+  text-decoration: none; transition: all .2s;
+}
+.btn-hero-secondary:hover { background: rgba(255,255,255,.14); }
+
+/* hero rating card */
+.hero-card {
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 20px;
+  backdrop-filter: blur(20px);
+  overflow: hidden;
+  animation: slideUp .8s ease-out .2s both;
+}
+@keyframes slideUp { from{opacity:0;transform:translateY(40px)} to{opacity:1;transform:translateY(0)} }
+
+.hero-card-header {
+  background: rgba(255,255,255,.05);
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  padding: 18px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.hero-card-header .title { font-size: 13px; font-weight: 600; color: rgba(255,255,255,.6); text-transform: uppercase; letter-spacing: .08em; }
+.live-badge {
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(16,185,129,.2); border: 1px solid rgba(16,185,129,.4);
+  color: #6ee7b7; font-size: 11px; font-weight: 700;
+  padding: 3px 10px; border-radius: 99px;
+}
+.live-dot { width: 6px; height: 6px; background: #10b981; border-radius: 50%; animation: pulse 1.5s infinite; }
+
+.leaderboard { padding: 0; }
+.lb-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 24px; border-bottom: 1px solid rgba(255,255,255,.06);
+  transition: background .2s;
+}
+.lb-row:hover { background: rgba(255,255,255,.04); }
+.lb-row:last-child { border-bottom: none; }
+
+.lb-rank {
+  width: 28px; text-align: center;
+  font-family: var(--font-display); font-size: 20px;
+  color: rgba(255,255,255,.4);
+}
+.lb-rank.gold   { color: var(--gold); }
+.lb-rank.silver { color: #cbd5e1; }
+.lb-rank.bronze { color: #d97706; }
+
+.lb-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: white; flex-shrink: 0;
+}
+
+.lb-info { flex: 1; }
+.lb-name { font-size: 14px; font-weight: 600; color: rgba(255,255,255,.9); }
+.lb-sport { font-size: 11px; color: rgba(255,255,255,.4); }
+
+.lb-rating {
+  text-align: right;
+}
+.lb-rating .val {
+  font-family: var(--font-mono); font-size: 18px; font-weight: 600;
+  color: var(--blue-300);
+}
+.lb-rating .delta {
+  font-size: 11px; font-weight: 600;
+  display: flex; align-items: center; justify-content: flex-end; gap: 2px;
+}
+.delta-up   { color: #6ee7b7; }
+.delta-down { color: #fca5a5; }
+
+.hero-card-footer {
+  padding: 12px 24px;
+  background: rgba(255,255,255,.03);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.hero-card-footer span { font-size: 11px; color: rgba(255,255,255,.3); }
+
+/* ═══════════════════════════════════════════
+   STATS BAR
+═══════════════════════════════════════════ */
+.stats-bar {
+  background: var(--blue-700);
+  padding: 28px 0;
+}
+.stats-inner {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 0; max-width: 1140px; margin: 0 auto; padding: 0 32px;
+}
+.stat-item {
+  text-align: center; padding: 0 20px;
+  border-right: 1px solid rgba(255,255,255,.15);
+}
+.stat-item:last-child { border-right: none; }
+.stat-num {
+  font-family: var(--font-display); font-size: 44px;
+  color: white; letter-spacing: .02em; line-height: 1;
+}
+.stat-num span { color: var(--blue-300); }
+.stat-label { font-size: 13px; color: rgba(255,255,255,.6); margin-top: 4px; font-weight: 500; }
+
+/* ═══════════════════════════════════════════
+   HOW IT WORKS
+═══════════════════════════════════════════ */
+.section-title {
+  font-family: var(--font-display);
+  font-size: clamp(36px, 5vw, 56px);
+  letter-spacing: .02em;
+  line-height: 1.05;
+  color: var(--blue-900);
+  margin-bottom: 16px;
+}
+.section-title .accent { color: var(--blue-600); }
+.section-desc {
+  font-size: 17px; font-weight: 400; color: var(--gray-600);
+  max-width: 560px; line-height: 1.7;
+}
+
+.steps {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 32px; margin-top: 64px; position: relative;
+}
+.steps::before {
+  content: '';
+  position: absolute; top: 40px; left: calc(16.66% + 16px); right: calc(16.66% + 16px);
+  height: 2px; background: linear-gradient(90deg, var(--blue-200), var(--blue-500), var(--blue-200));
+}
+
+.step-card {
+  background: white; border-radius: 16px;
+  border: 1px solid var(--gray-200);
+  padding: 32px; position: relative;
+  transition: all .3s;
+  animation: fadeInUp .6s ease-out both;
+}
+.step-card:nth-child(2) { animation-delay: .1s; }
+.step-card:nth-child(3) { animation-delay: .2s; }
+.step-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 20px 60px rgba(37,99,235,.1);
+  border-color: var(--blue-300);
+}
+@keyframes fadeInUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+
+.step-num {
+  width: 56px; height: 56px; border-radius: 16px;
+  background: var(--blue-600); color: white;
+  font-family: var(--font-display); font-size: 28px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 20px; position: relative; z-index: 1;
+  box-shadow: 0 8px 24px rgba(37,99,235,.3);
+}
+.step-card h3 { font-size: 18px; font-weight: 700; color: var(--blue-900); margin-bottom: 10px; }
+.step-card p  { font-size: 14px; color: var(--gray-600); line-height: 1.7; }
+
+/* ═══════════════════════════════════════════
+   FORMULA SECTION
+═══════════════════════════════════════════ */
+.formula-section {
+  background: var(--blue-950);
+  padding: 100px 0;
+  position: relative; overflow: hidden;
+}
+.formula-section::before {
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(59,130,246,.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59,130,246,.06) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+.formula-inner {
+  position: relative; z-index: 1;
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 80px; align-items: start;
+}
+
+.formula-text .section-title { color: white; }
+.formula-text .section-desc  { color: rgba(255,255,255,.6); }
+
+.formula-box {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 16px; overflow: hidden;
+}
+.formula-box-header {
+  padding: 14px 20px;
+  background: rgba(255,255,255,.05);
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  font-size: 11px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--blue-300);
+  display: flex; align-items: center; gap: 8px;
+}
+.formula-box-header::before {
+  content: ''; display: inline-block;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--blue-400);
+}
+.formula-content { padding: 24px 20px; }
+
+.formula-line {
+  font-family: var(--font-mono);
+  font-size: 13px; color: rgba(255,255,255,.8);
+  padding: 6px 0; display: flex; gap: 12px; align-items: flex-start;
+  border-bottom: 1px solid rgba(255,255,255,.05);
+}
+.formula-line:last-child { border-bottom: none; }
+.formula-line .kw  { color: #93c5fd; }
+.formula-line .val { color: #6ee7b7; }
+.formula-line .cmt { color: rgba(255,255,255,.25); font-size: 12px; }
+.formula-line .op  { color: #fbbf24; }
+
+.k-factors {
+  margin-top: 24px;
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;
+}
+.k-card {
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 10px; padding: 14px; text-align: center;
+}
+.k-card .k-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: rgba(255,255,255,.4); margin-bottom: 6px; }
+.k-card .k-val   { font-family: var(--font-display); font-size: 32px; color: white; line-height: 1; }
+.k-card .k-desc  { font-size: 11px; color: rgba(255,255,255,.4); margin-top: 4px; }
+.k-card.provisional { border-color: rgba(251,191,36,.3); }
+.k-card.provisional .k-val { color: var(--gold); }
+.k-card.established { border-color: rgba(96,165,250,.3); }
+.k-card.established .k-val { color: var(--blue-300); }
+.k-card.elite       { border-color: rgba(110,231,183,.3); }
+.k-card.elite       .k-val { color: #6ee7b7; }
+
+/* ═══════════════════════════════════════════
+   RATING SCALE
+═══════════════════════════════════════════ */
+.scale-section { padding: 100px 0; }
+.scale-header { text-align: center; margin-bottom: 64px; }
+.scale-header .section-desc { margin: 0 auto; }
+
+.scale-track {
+  position: relative;
+  height: 16px;
+  border-radius: 99px;
+  background: linear-gradient(90deg,
+    #ef4444 0%,
+    #f97316 20%,
+    #eab308 40%,
+    #3b82f6 60%,
+    #10b981 80%,
+    #f59e0b 100%
+  );
+  margin: 0 40px 60px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.1);
+}
+.scale-labels {
+  display: flex; justify-content: space-between;
+  margin: 0 40px; margin-top: 16px;
+}
+.scale-label { text-align: center; }
+.scale-label .range {
+  font-family: var(--font-mono); font-size: 13px;
+  font-weight: 600; color: var(--blue-700);
+}
+.scale-label .tier {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--gray-600); margin-top: 2px;
+}
+
+.tier-cards {
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  gap: 16px; margin-top: 48px;
+}
+.tier-card {
+  border-radius: 14px; padding: 24px 20px;
+  border: 2px solid transparent; text-align: center;
+  transition: transform .2s;
+}
+.tier-card:hover { transform: translateY(-4px); }
+.tier-card .tier-icon { font-size: 32px; margin-bottom: 12px; }
+.tier-card .tier-name { font-weight: 800; font-size: 15px; margin-bottom: 4px; }
+.tier-card .tier-range { font-family: var(--font-mono); font-size: 13px; margin-bottom: 8px; }
+.tier-card .tier-desc  { font-size: 12px; line-height: 1.5; opacity: .75; }
+
+.tier-beginner     { background: #fff1f2; border-color: #fecdd3; color: #b91c1c; }
+.tier-intermediate { background: #fff7ed; border-color: #fed7aa; color: #c2410c; }
+.tier-advanced     { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.tier-expert       { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+.tier-legend       { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
+
+/* ═══════════════════════════════════════════
+   SPORT CARDS
+═══════════════════════════════════════════ */
+.sports-section { padding: 100px 0; background: var(--gray-50); }
+.sports-grid {
+  display: grid; grid-template-columns: repeat(6, 1fr);
+  gap: 14px; margin-top: 56px;
+}
+.sport-pill {
+  background: white; border: 1px solid var(--gray-200);
+  border-radius: 12px; padding: 18px 12px;
+  text-align: center; transition: all .2s; cursor: default;
+}
+.sport-pill:hover {
+  border-color: var(--blue-300);
+  background: var(--blue-50);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(37,99,235,.08);
+}
+.sport-pill .sp-icon { font-size: 28px; margin-bottom: 8px; }
+.sport-pill .sp-name { font-size: 12px; font-weight: 600; color: var(--gray-800); }
+.sport-pill .sp-type { font-size: 10px; color: var(--gray-600); margin-top: 2px; text-transform: uppercase; letter-spacing: .06em; }
+
+/* ═══════════════════════════════════════════
+   BENEFITS — PLAYERS
+═══════════════════════════════════════════ */
+.benefits-section { padding: 100px 0; }
+.benefits-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 64px; align-items: center;
+}
+.benefits-visual {
+  position: relative;
+}
+.profile-card {
+  background: white; border-radius: 20px;
+  border: 1px solid var(--gray-200);
+  box-shadow: 0 20px 60px rgba(37,99,235,.08);
+  overflow: hidden;
+}
+.profile-card-top {
+  background: linear-gradient(135deg, var(--blue-700), var(--blue-500));
+  padding: 32px 28px 20px;
+  position: relative;
+}
+.profile-avatar {
+  width: 64px; height: 64px; border-radius: 50%;
+  background: rgba(255,255,255,.2);
+  border: 3px solid rgba(255,255,255,.5);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; font-weight: 800; color: white;
+  margin-bottom: 12px;
+}
+.profile-name { font-size: 18px; font-weight: 700; color: white; }
+.profile-id   { font-family: var(--font-mono); font-size: 11px; color: rgba(255,255,255,.5); margin-top: 2px; }
+
+.profile-rating-row {
+  display: flex; gap: 12px; margin-top: 16px;
+}
+.p-rating-box {
+  flex: 1; background: rgba(255,255,255,.12);
+  border-radius: 10px; padding: 10px 14px;
+  border: 1px solid rgba(255,255,255,.15);
+}
+.p-rating-box .sport  { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: rgba(255,255,255,.5); }
+.p-rating-box .score  { font-family: var(--font-display); font-size: 28px; color: white; line-height: 1.1; }
+.p-rating-box .badge  { font-size: 10px; font-weight: 700; color: #6ee7b7; }
+
+.profile-body { padding: 20px 28px; }
+.history-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 0; border-bottom: 1px solid var(--gray-100);
+  font-size: 13px;
+}
+.history-row:last-child { border-bottom: none; }
+.history-row .match { color: var(--gray-600); }
+.history-row .result {
+  font-family: var(--font-mono); font-weight: 600; font-size: 13px;
+}
+.result.up   { color: var(--success); }
+.result.down { color: var(--danger); }
+
+.sparkline-wrap { padding: 0 28px 20px; }
+.sparkline-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--gray-600); margin-bottom: 8px; }
+
+.benefit-list { list-style: none; margin-top: 40px; }
+.benefit-item {
+  display: flex; align-items: flex-start; gap: 16px;
+  padding: 18px 0; border-bottom: 1px solid var(--gray-100);
+}
+.benefit-item:last-child { border-bottom: none; }
+.benefit-icon {
+  width: 44px; height: 44px; border-radius: 12px;
+  background: var(--blue-50); display: flex; align-items: center;
+  justify-content: center; font-size: 20px; flex-shrink: 0;
+  border: 1px solid var(--blue-100);
+}
+.benefit-text h4 { font-size: 15px; font-weight: 700; color: var(--blue-900); margin-bottom: 4px; }
+.benefit-text p  { font-size: 13px; color: var(--gray-600); line-height: 1.6; }
+
+/* ═══════════════════════════════════════════
+   BENEFITS — CLUBS
+═══════════════════════════════════════════ */
+.club-benefits { padding: 100px 0; background: var(--gray-50); }
+.club-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 24px; margin-top: 56px;
+}
+.club-card {
+  background: white; border-radius: 16px;
+  border: 1px solid var(--gray-200);
+  padding: 28px; transition: all .3s;
+}
+.club-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 48px rgba(37,99,235,.08);
+  border-color: var(--blue-200);
+}
+.club-card-icon {
+  width: 52px; height: 52px; border-radius: 14px;
+  background: var(--blue-50); border: 1px solid var(--blue-100);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; margin-bottom: 18px;
+}
+.club-card h3 { font-size: 16px; font-weight: 700; color: var(--blue-900); margin-bottom: 8px; }
+.club-card p  { font-size: 13px; color: var(--gray-600); line-height: 1.7; }
+
+/* ═══════════════════════════════════════════
+   ADMIN DASHBOARD PREVIEW
+═══════════════════════════════════════════ */
+.admin-section {
+  background: var(--blue-950); padding: 100px 0;
+  position: relative; overflow: hidden;
+}
+.admin-section::after {
+  content: '';
+  position: absolute; bottom: -2px; left: 0; right: 0;
+  height: 120px;
+  background: linear-gradient(to top, var(--white), transparent);
+}
+.admin-inner {
+  position: relative; z-index: 1;
+  display: grid; grid-template-columns: 1fr 1.4fr;
+  gap: 64px; align-items: start;
+}
+.admin-text .section-title { color: white; }
+.admin-text .section-desc  { color: rgba(255,255,255,.6); }
+
+.admin-features { margin-top: 36px; display: flex; flex-direction: column; gap: 16px; }
+.admin-feature {
+  display: flex; align-items: flex-start; gap: 14px;
+  padding: 16px; border-radius: 12px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.07);
+  transition: background .2s;
+}
+.admin-feature:hover { background: rgba(255,255,255,.07); }
+.admin-feature .af-icon {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: rgba(59,130,246,.2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; flex-shrink: 0;
+}
+.admin-feature h4 { font-size: 14px; font-weight: 700; color: white; margin-bottom: 3px; }
+.admin-feature p  { font-size: 12px; color: rgba(255,255,255,.5); line-height: 1.5; }
+
+.dashboard-preview {
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 16px; overflow: hidden;
+}
+.dp-header {
+  background: rgba(255,255,255,.06);
+  padding: 14px 20px; border-bottom: 1px solid rgba(255,255,255,.08);
+  display: flex; align-items: center; gap: 8px;
+}
+.dp-dot { width: 10px; height: 10px; border-radius: 50%; }
+.dp-title { font-size: 12px; font-weight: 600; color: rgba(255,255,255,.5); margin-left: 8px; letter-spacing: .06em; text-transform: uppercase; }
+
+.dp-body { padding: 20px; }
+.dp-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border-radius: 8px;
+  margin-bottom: 6px; transition: background .15s;
+}
+.dp-row:hover { background: rgba(255,255,255,.04); }
+.dp-pos {
+  width: 24px; text-align: center;
+  font-family: var(--font-display); font-size: 18px; color: rgba(255,255,255,.3);
+}
+.dp-pos.g { color: var(--gold); }
+.dp-pos.s { color: #cbd5e1; }
+.dp-pos.b { color: #d97706; }
+.dp-av {
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; color: white;
+}
+.dp-info { flex: 1; }
+.dp-info .n { font-size: 13px; font-weight: 600; color: rgba(255,255,255,.85); }
+.dp-info .s { font-size: 11px; color: rgba(255,255,255,.35); }
+.dp-rt {
+  font-family: var(--font-mono); font-size: 16px;
+  font-weight: 600; color: var(--blue-300);
+}
+.dp-trend { font-size: 11px; font-weight: 700; }
+.dp-trend.up   { color: #6ee7b7; }
+.dp-trend.down { color: #fca5a5; }
+
+.dp-section-title {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .1em; color: rgba(255,255,255,.3);
+  padding: 4px 12px 10px;
+}
+
+.dp-bar-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.06); }
+.dp-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.dp-bar-label { font-size: 11px; color: rgba(255,255,255,.5); width: 72px; flex-shrink: 0; }
+.dp-bar-track {
+  flex: 1; height: 6px; background: rgba(255,255,255,.08);
+  border-radius: 99px; overflow: hidden;
+}
+.dp-bar-fill { height: 100%; border-radius: 99px; background: var(--blue-500); }
+.dp-bar-val { font-family: var(--font-mono); font-size: 11px; color: rgba(255,255,255,.5); width: 36px; text-align: right; }
+
+/* ═══════════════════════════════════════════
+   VISIBILITY / CONFIG
+═══════════════════════════════════════════ */
+.config-section { padding: 100px 0; }
+.config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 56px; }
+.config-card {
+  border-radius: 16px; overflow: hidden;
+  border: 1px solid var(--gray-200);
+}
+.config-card-head {
+  padding: 20px 24px; font-weight: 700; font-size: 15px;
+  display: flex; align-items: center; gap: 10px;
+}
+.config-card-head .icon { font-size: 20px; }
+.config-card-body { padding: 20px 24px; }
+.config-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 0; border-bottom: 1px solid var(--gray-100); font-size: 14px;
+}
+.config-item:last-child { border-bottom: none; }
+.config-item .ci-label { color: var(--gray-600); font-weight: 500; }
+.config-item .ci-val {
+  font-family: var(--font-mono); font-size: 13px;
+  background: var(--blue-50); color: var(--blue-700);
+  padding: 3px 10px; border-radius: 6px; font-weight: 600;
+}
+
+.config-card.blue-head .config-card-head  { background: var(--blue-600); color: white; }
+.config-card.green-head .config-card-head { background: #059669; color: white; }
+.config-card.gold-head .config-card-head  { background: var(--gold); color: white; }
+.config-card.dark-head .config-card-head  { background: var(--blue-900); color: white; }
+
+/* ═══════════════════════════════════════════
+   CTA
+═══════════════════════════════════════════ */
+.cta-section {
+  background: linear-gradient(135deg, var(--blue-800) 0%, var(--blue-600) 100%);
+  padding: 100px 0; text-align: center;
+  position: relative; overflow: hidden;
+}
+.cta-section::before {
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    radial-gradient(circle at 20% 50%, rgba(255,255,255,.05) 0%, transparent 50%),
+    radial-gradient(circle at 80% 50%, rgba(255,255,255,.05) 0%, transparent 50%);
+}
+.cta-inner { position: relative; z-index: 1; }
+.cta-inner h2 {
+  font-family: var(--font-display);
+  font-size: clamp(40px, 6vw, 72px);
+  color: white; letter-spacing: .02em;
+  line-height: 1; margin-bottom: 20px;
+}
+.cta-inner p {
+  font-size: 18px; color: rgba(255,255,255,.7);
+  margin-bottom: 40px; max-width: 520px; margin-left: auto; margin-right: auto;
+}
+.cta-buttons { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+.btn-cta-white {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: white; color: var(--blue-700);
+  padding: 14px 32px; border-radius: 10px;
+  font-size: 15px; font-weight: 700;
+  text-decoration: none; transition: all .2s;
+}
+.btn-cta-white:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,0,0,.15); }
+.btn-cta-outline {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: transparent; color: white;
+  border: 2px solid rgba(255,255,255,.4);
+  padding: 14px 32px; border-radius: 10px;
+  font-size: 15px; font-weight: 600;
+  text-decoration: none; transition: all .2s;
+}
+.btn-cta-outline:hover { border-color: white; background: rgba(255,255,255,.1); }
+
+/* ═══════════════════════════════════════════
+   FOOTER
+═══════════════════════════════════════════ */
+footer {
+  background: var(--blue-950);
+  padding: 40px 0;
+  text-align: center;
+}
+footer p { font-size: 13px; color: rgba(255,255,255,.3); }
+footer strong { color: rgba(255,255,255,.6); }
+
+/* ═══════════════════════════════════════════
+   SCROLL REVEAL
+═══════════════════════════════════════════ */
+.reveal { opacity: 0; transform: translateY(24px); transition: opacity .6s ease, transform .6s ease; }
+.reveal.visible { opacity: 1; transform: translateY(0); }
+
+/* ═══════════════════════════════════════════
+   RESPONSIVE
+═══════════════════════════════════════════ */
+@media(max-width: 1024px) {
+  .hero-inner         { grid-template-columns: 1fr; }
+  .hero-card          { display: none; }
+  .formula-inner      { grid-template-columns: 1fr; }
+  .benefits-grid      { grid-template-columns: 1fr; }
+  .admin-inner        { grid-template-columns: 1fr; }
+  .sports-grid        { grid-template-columns: repeat(4, 1fr); }
+  .tier-cards         { grid-template-columns: repeat(3, 1fr); }
+  .stats-inner        { grid-template-columns: repeat(2, 1fr); gap: 24px; }
+  .stat-item          { border-right: none; border-bottom: 1px solid rgba(255,255,255,.1); padding-bottom: 20px; }
+}
+@media(max-width: 768px) {
+  .section { padding: 64px 0; }
+  .steps { grid-template-columns: 1fr; }
+  .steps::before { display: none; }
+  .club-grid { grid-template-columns: 1fr 1fr; }
+  .tier-cards { grid-template-columns: 1fr 1fr; }
+  .config-grid { grid-template-columns: 1fr; }
+  .sports-grid { grid-template-columns: repeat(3, 1fr); }
+  .nav-links { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ NAV ═══ -->
+<nav id="nav">
+  <div class="nav-inner">
+    <a class="nav-logo" href="#">
+      <div class="icon">🏆</div>
+      <span>SLMS</span>
+    </a>
+    <div class="nav-links">
+      <a href="#how-it-works">How It Works</a>
+      <a href="#scale">Rating Scale</a>
+      <a href="#players">For Players</a>
+      <a href="#clubs">For Clubs</a>
+      <a href="#admin">Admin Tools</a>
+      <a href="#launch" class="nav-cta">Get Started →</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ═══ HERO ═══ -->
+<section class="hero">
+  <div class="hero-glow hero-glow-1"></div>
+  <div class="hero-glow hero-glow-2"></div>
+  <div class="hero-inner">
+    <div class="hero-text">
+      <div class="hero-eyebrow">
+        <span class="dot"></span>
+        SLMS Rating System — Now Live
+      </div>
+      <h1>KNOW<br/>YOUR<br/><span class="accent">GAME.</span></h1>
+      <p class="hero-sub">
+        A dynamic, sport-specific rating system that tracks every player's
+        true skill level across 18+ sports — built into SLMS and powered
+        by proven Elo mathematics.
+      </p>
+      <div class="hero-actions">
+        <a href="#how-it-works" class="btn-hero-primary">See How It Works →</a>
+        <a href="#scale" class="btn-hero-secondary">View Rating Scale</a>
+      </div>
+    </div>
+
+    <!-- Live leaderboard card -->
+    <div class="hero-card">
+      <div class="hero-card-header">
+        <span class="title">🏸 Badminton — Global Rankings</span>
+        <div class="live-badge"><span class="live-dot"></span> Live</div>
+      </div>
+      <div class="leaderboard">
+        <div class="lb-row">
+          <div class="lb-rank gold">1</div>
+          <div class="lb-avatar" style="background:linear-gradient(135deg,#f59e0b,#d97706)">RK</div>
+          <div class="lb-info"><div class="lb-name">Rahul Kumar</div><div class="lb-sport">Singles · Reliable</div></div>
+          <div class="lb-rating">
+            <div class="val">84.20</div>
+            <div class="delta delta-up">▲ +2.4 this week</div>
+          </div>
+        </div>
+        <div class="lb-row">
+          <div class="lb-rank silver">2</div>
+          <div class="lb-avatar" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8)">PS</div>
+          <div class="lb-info"><div class="lb-name">Priya Sharma</div><div class="lb-sport">Singles · Reliable</div></div>
+          <div class="lb-rating">
+            <div class="val">81.75</div>
+            <div class="delta delta-up">▲ +1.1 this week</div>
+          </div>
+        </div>
+        <div class="lb-row">
+          <div class="lb-rank bronze">3</div>
+          <div class="lb-avatar" style="background:linear-gradient(135deg,#10b981,#059669)">AM</div>
+          <div class="lb-info"><div class="lb-name">Arjun Mehta</div><div class="lb-sport">Singles · Reliable</div></div>
+          <div class="lb-rating">
+            <div class="val">79.50</div>
+            <div class="delta delta-down">▼ −0.8 this week</div>
+          </div>
+        </div>
+        <div class="lb-row">
+          <div class="lb-rank">4</div>
+          <div class="lb-avatar" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9)">SN</div>
+          <div class="lb-info"><div class="lb-name">Sunita Nair</div><div class="lb-sport">Singles · Reliable</div></div>
+          <div class="lb-rating">
+            <div class="val">76.30</div>
+            <div class="delta delta-up">▲ +3.2 this week</div>
+          </div>
+        </div>
+        <div class="lb-row">
+          <div class="lb-rank">5</div>
+          <div class="lb-avatar" style="background:linear-gradient(135deg,#f43f5e,#e11d48)">VT</div>
+          <div class="lb-info"><div class="lb-name">Vikram Tiwari</div><div class="lb-sport">Singles · Provisional</div></div>
+          <div class="lb-rating">
+            <div class="val">71.60</div>
+            <div class="delta delta-up">▲ +4.5 this week</div>
+          </div>
+        </div>
+      </div>
+      <div class="hero-card-footer">
+        <span>Updated after each recalculation</span>
+        <span>18 sports tracked</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ STATS BAR ═══ -->
+<div class="stats-bar">
+  <div class="stats-inner">
+    <div class="stat-item">
+      <div class="stat-num">18<span>+</span></div>
+      <div class="stat-label">Sports Supported</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">0<span>–</span>100</div>
+      <div class="stat-label">Rating Scale</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">5</div>
+      <div class="stat-label">Skill Tiers</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">4<span>×</span></div>
+      <div class="stat-label">Ranking Scopes</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ HOW IT WORKS ═══ -->
+<section class="section" id="how-it-works">
+  <div class="container">
+    <div class="reveal">
+      <div class="tag"><span class="dot"></span> The Process</div>
+      <h2 class="section-title">How Ratings Are<br/><span class="accent">Calculated</span></h2>
+      <p class="section-desc">Every match result feeds the engine. Every result is fair, transparent, and mathematically consistent.</p>
+    </div>
+    <div class="steps">
+      <div class="step-card reveal">
+        <div class="step-num">1</div>
+        <h3>Match Is Played & Scored</h3>
+        <p>Officials record the final score in SLMS. The system captures the exact score margin — not just win or loss — giving a richer picture of performance. Each sport uses its own scoring logic (points, runs, frames, legs).</p>
+      </div>
+      <div class="step-card reveal">
+        <div class="step-num">2</div>
+        <h3>Engine Runs Recalculation</h3>
+        <p>A super admin triggers recalculation. The engine replays every match in chronological order — computing expected outcomes, actual results, and updating each player's rating using the Elo formula adapted for a 0–100 scale.</p>
+      </div>
+      <div class="step-card reveal">
+        <div class="step-num">3</div>
+        <h3>Rankings Update Instantly</h3>
+        <p>After recalculation, all leaderboards refresh — global, per-club, by age group, by division. Players see their new rank, rating change, and full history. Clubs see their squad's performance at a glance.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FORMULA ═══ -->
+<section class="formula-section" id="formula">
+  <div class="container">
+    <div class="formula-inner">
+      <div class="formula-text reveal">
+        <div class="tag" style="background:rgba(96,165,250,.15);color:var(--blue-300);border:1px solid rgba(96,165,250,.2)"><span class="dot" style="background:var(--blue-400)"></span> The Math</div>
+        <h2 class="section-title">Proven <span class="accent">Elo</span><br/>Mathematics</h2>
+        <p class="section-desc" style="color:rgba(255,255,255,.6)">
+          SLMS uses a battle-tested Elo algorithm adapted to a 0–100 scale.
+          Every update is fair, deterministic, and auditable.
+          No black boxes — every delta is stored in history.
+        </p>
+
+        <div class="k-factors reveal">
+          <div class="k-card provisional">
+            <div class="k-label">Provisional</div>
+            <div class="k-val">32</div>
+            <div class="k-desc">First few matches. Fast movement.</div>
+          </div>
+          <div class="k-card established">
+            <div class="k-label">Established</div>
+            <div class="k-val">16</div>
+            <div class="k-desc">Reliable players. Stable movement.</div>
+          </div>
+          <div class="k-card elite">
+            <div class="k-label">Elite</div>
+            <div class="k-val">8</div>
+            <div class="k-desc">Top-rated. Harder to swing.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="reveal">
+        <div class="formula-box">
+          <div class="formula-box-header">Expected Score Formula</div>
+          <div class="formula-content">
+            <div class="formula-line">
+              <span class="kw">E</span>&nbsp;<span class="op">=</span>&nbsp;
+              <span class="val">1 / (1 + 10 ^ ((Rb - Ra) / 40))</span>
+            </div>
+            <div class="formula-line">
+              <span class="cmt"># Ra = your current rating (0–100)</span>
+            </div>
+            <div class="formula-line">
+              <span class="cmt"># Rb = opponent's current rating (0–100)</span>
+            </div>
+            <div class="formula-line">
+              <span class="cmt"># E  = probability you win (0.0 to 1.0)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="formula-box" style="margin-top:14px">
+          <div class="formula-box-header">New Rating Formula</div>
+          <div class="formula-content">
+            <div class="formula-line">
+              <span class="kw">delta</span>&nbsp;<span class="op">=</span>&nbsp;
+              <span class="val">K × (Actual − Expected)</span>
+            </div>
+            <div class="formula-line">
+              <span class="kw">delta</span>&nbsp;<span class="op">=</span>&nbsp;
+              <span class="val">clamp(delta, −MaxChange, +MaxChange)</span>
+            </div>
+            <div class="formula-line">
+              <span class="kw">NewRating</span>&nbsp;<span class="op">=</span>&nbsp;
+              <span class="val">clamp(OldRating + delta, 0, 100)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="formula-box" style="margin-top:14px">
+          <div class="formula-box-header">Score Margin — Sport Specific</div>
+          <div class="formula-content">
+            <div class="formula-line">
+              <span class="kw">Points sports</span>&nbsp;<span class="op">→</span>&nbsp;
+              <span class="val">score_a / (score_a + score_b)</span>
+            </div>
+            <div class="formula-line">
+              <span class="kw">Goal sports</span>&nbsp;<span class="op">→</span>&nbsp;
+              <span class="val">0.5 ± min(diff, cap) / cap × 0.5</span>
+            </div>
+            <div class="formula-line">
+              <span class="kw">Chess</span>&nbsp;<span class="op">→</span>&nbsp;
+              <span class="val">1.0 win / 0.5 draw / 0.0 loss</span>
+            </div>
+            <div class="formula-line">
+              <span class="kw">Tug of War</span>&nbsp;<span class="op">→</span>&nbsp;
+              <span class="val">binary 1.0 / 0.0 only</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ RATING SCALE ═══ -->
+<section class="scale-section section" id="scale">
+  <div class="container">
+    <div class="scale-header reveal">
+      <div class="tag"><span class="dot"></span> Skill Tiers</div>
+      <h2 class="section-title">The <span class="accent">0–100</span> Rating Scale</h2>
+      <p class="section-desc">Every player starts at 50. Your rating rises with wins against stronger opponents and drops with losses against weaker ones.</p>
+    </div>
+
+    <div class="reveal">
+      <div class="scale-track"></div>
+      <div class="scale-labels">
+        <div class="scale-label"><div class="range">0–30</div><div class="tier">Beginner</div></div>
+        <div class="scale-label"><div class="range">31–50</div><div class="tier">Intermediate</div></div>
+        <div class="scale-label"><div class="range">51–70</div><div class="tier">Advanced</div></div>
+        <div class="scale-label"><div class="range">71–85</div><div class="tier">Expert</div></div>
+        <div class="scale-label"><div class="range">86–100</div><div class="tier">Legend</div></div>
+      </div>
+    </div>
+
+    <div class="tier-cards">
+      <div class="tier-card tier-beginner reveal">
+        <div class="tier-icon">🌱</div>
+        <div class="tier-name">Beginner</div>
+        <div class="tier-range">0 – 30</div>
+        <div class="tier-desc">Just starting out. Still learning rules and basic techniques. Ratings move fast.</div>
+      </div>
+      <div class="tier-card tier-intermediate reveal">
+        <div class="tier-icon">⚡</div>
+        <div class="tier-name">Intermediate</div>
+        <div class="tier-range">31 – 50</div>
+        <div class="tier-desc">Consistent and competitive. Playing regularly and improving match by match.</div>
+      </div>
+      <div class="tier-card tier-advanced reveal">
+        <div class="tier-icon">🔥</div>
+        <div class="tier-name">Advanced</div>
+        <div class="tier-range">51 – 70</div>
+        <div class="tier-desc">Strong club-level player. Tournament-ready with proven results against good competition.</div>
+      </div>
+      <div class="tier-card tier-expert reveal">
+        <div class="tier-icon">💎</div>
+        <div class="tier-name">Expert</div>
+        <div class="tier-range">71 – 85</div>
+        <div class="tier-desc">Among the best in your club or region. Hard-earned, hard to move. Elite K-factor kicks in.</div>
+      </div>
+      <div class="tier-card tier-legend reveal">
+        <div class="tier-icon">👑</div>
+        <div class="tier-name">Legend</div>
+        <div class="tier-range">86 – 100</div>
+        <div class="tier-desc">The very top. Exceptionally rare. Maintained only by consistent wins against other top players.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SPORTS ═══ -->
+<section class="sports-section" id="sports">
+  <div class="container">
+    <div class="reveal">
+      <div class="tag"><span class="dot"></span> Multi-Sport</div>
+      <h2 class="section-title">Ratings Across<br/><span class="accent">18+ Sports</span></h2>
+      <p class="section-desc">Each sport has its own independent rating. Your Badminton rating has no effect on your Chess rating.</p>
+    </div>
+    <div class="sports-grid">
+      <div class="sport-pill reveal"><div class="sp-icon">⚽</div><div class="sp-name">Football</div><div class="sp-type">Team</div></div>
+      <div class="sport-pill reveal"><div class="sp-icon">🏏</div><div class="sp-name">Cricket</div><div class="sp-type">Team</div></div>
+      <div class="sport-pill reveal"><div class="sp-icon">🏀</div><div class="sp-name">Basketball</div><div class="sp-type">Team</div></div>
+      <div class="sport-pill reveal"><div class="sp-icon">🏐</div><div class="sp-name">Volleyball</div><div class="sp-type">Team</div></div>
+      <div class="sport-pill reveal"><div class="sp-icon">🏸</div><div class="sp-name">Badminton</div><div class="sp-type">Racket</div></div>
+      <div class="sport-pill reveal"><div class="sp-icon">🎾</div><div class="sp-name">Tennis</div><div class="sp-type">Racket</div></div>
+      <div class="sport-pill reveal"><div class="sp-icon">🏓</div><div class="sp-name">Table Tennis</div><div class="sp-type">Racket</div></div>
+      <div class="sport-pill reveal"><div class="sp-icon">🏓</div><div class="sp-name">Pickleball</div><div class="sp-type">Racket</div></div>
+      <div class="sport-pill reveal"><div class="sp-icon">🎱</div><div class="sp-name">Snooker</div><div class="sp-type">Precision</div></div>
+      <div class="sport-pill reveal"><div class="sp-icon">🎱</div><div class="sp-name">Billiards</div><div class="sp-type">Precision</div></div>
+      <div class="sport-pill reveal"><div class="sp-icon">🎯</div><div class="sp-name">Darts</div><div class="sp-type">Precision</div></div>
+      <div class="sport-pill reveal"><div class="sp-icon">🏹</div><div class="sp-name">Archery</div><div class="sp-type">Precision</div></div>
+      <div class="sport-pill reveal"><div class="sp-icon">♟️</div><div class="sp-name">Chess</div><div class="sp-type">Mind</div></div>
+      <div class="sport-pill reveal"><div class="sp-icon">🎯</div><div class="sp-name">Carrom</div><div class="sp-type">Board</div></div>
+      <div class="sport-pill reveal"><div class="sp-icon">🏊</div><div class="sp-name">Swimming</div><div class="sp-type">Aquatic</div></div>
+      <div class="sport-pill reveal"><div class="sp-icon">🚣</div><div class="sp-name">Rowing</div><div class="sp-type">Aquatic</div></div>
+      <div class="sport-pill reveal"><div class="sp-icon">⚽</div><div class="sp-name">Foosball</div><div class="sp-type">Table</div></div>
+      <div class="sport-pill reveal"><div class="sp-icon">💪</div><div class="sp-name">Tug of War</div><div class="sp-type">Team</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ BENEFITS — PLAYERS ═══ -->
+<section class="benefits-section section" id="players">
+  <div class="container">
+    <div class="benefits-grid">
+      <div class="benefits-visual reveal">
+        <div class="profile-card">
+          <div class="profile-card-top">
+            <div class="profile-avatar">RK</div>
+            <div class="profile-name">Rahul Kumar</div>
+            <div class="profile-id">SLMS-2024-00142</div>
+            <div class="profile-rating-row">
+              <div class="p-rating-box">
+                <div class="sport">🏸 Badminton</div>
+                <div class="score">84.20</div>
+                <div class="badge">⭐ Expert · Rank #1</div>
+              </div>
+              <div class="p-rating-box">
+                <div class="sport">🎾 Tennis</div>
+                <div class="score">61.40</div>
+                <div class="badge">✅ Advanced · Rank #7</div>
+              </div>
+            </div>
+          </div>
+          <div class="profile-body">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--gray-600);margin-bottom:8px">Recent Match History</div>
+            <div class="history-row">
+              <span class="match">vs Priya Sharma (81.75)</span>
+              <span class="result up">▲ +2.40</span>
+            </div>
+            <div class="history-row">
+              <span class="match">vs Arjun Mehta (79.50)</span>
+              <span class="result up">▲ +1.80</span>
+            </div>
+            <div class="history-row">
+              <span class="match">vs Sunita Nair (76.30)</span>
+              <span class="result down">▼ −1.20</span>
+            </div>
+            <div class="history-row">
+              <span class="match">vs Vikram Tiwari (71.60)</span>
+              <span class="result up">▲ +0.90</span>
+            </div>
+          </div>
+          <div class="sparkline-wrap">
+            <div class="sparkline-label">Rating Trend — Last 10 Matches</div>
+            <svg width="100%" height="64" viewBox="0 0 280 64" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#3b82f6" stop-opacity=".3"/>
+                  <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <!-- reference line at 50 (y = 32) -->
+              <line x1="0" y1="38" x2="280" y2="38" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="4,4"/>
+              <!-- area fill -->
+              <path d="M0,52 L28,48 L56,44 L84,46 L112,40 L140,36 L168,32 L196,28 L224,24 L252,20 L280,16 L280,64 L0,64 Z" fill="url(#sg)"/>
+              <!-- line -->
+              <polyline points="0,52 28,48 56,44 84,46 112,40 140,36 168,32 196,28 224,24 252,20 280,16"
+                fill="none" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <!-- dots -->
+              <circle cx="280" cy="16" r="4" fill="#3b82f6"/>
+              <circle cx="0"   cy="52" r="3" fill="#93c5fd"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="reveal">
+        <div class="tag"><span class="dot"></span> For Players</div>
+        <h2 class="section-title">Your Skill,<br/><span class="accent">Measured.</span></h2>
+        <p class="section-desc">No more guessing where you stand. Your SLMS rating is a real, honest reflection of your performance — sport by sport.</p>
+        <ul class="benefit-list">
+          <li class="benefit-item">
+            <div class="benefit-icon">📊</div>
+            <div class="benefit-text">
+              <h4>Separate Rating Per Sport</h4>
+              <p>Your Badminton rating never affects your Chess rating. Each sport is tracked independently, so you can be a Beginner at Cricket and an Expert at Table Tennis simultaneously.</p>
+            </div>
+          </li>
+          <li class="benefit-item">
+            <div class="benefit-icon">🎯</div>
+            <div class="benefit-text">
+              <h4>Singles & Doubles Tracked Separately</h4>
+              <p>Your individual skill in singles is measured independently from your team coordination in doubles. Both ratings count — both matter.</p>
+            </div>
+          </li>
+          <li class="benefit-item">
+            <div class="benefit-icon">📈</div>
+            <div class="benefit-text">
+              <h4>Full Rating History & Trend</h4>
+              <p>See every match's impact on your rating. Watch your curve trend upward over months. Know exactly which opponents helped you grow and which exposed gaps.</p>
+            </div>
+          </li>
+          <li class="benefit-item">
+            <div class="benefit-icon">🏅</div>
+            <div class="benefit-text">
+              <h4>Ranked in Multiple Scopes</h4>
+              <p>See your rank globally, within your club, in your age group, and in your division — all simultaneously. Compete at the level that matters most to you.</p>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ BENEFITS — CLUBS ═══ -->
+<section class="club-benefits" id="clubs">
+  <div class="container">
+    <div class="reveal" style="text-align:center">
+      <div class="tag" style="margin:0 auto 20px"><span class="dot"></span> For Clubs</div>
+      <h2 class="section-title">Run a Smarter <span class="accent">Club</span></h2>
+      <p class="section-desc" style="margin:0 auto">Ratings give club admins powerful new tools — from fair team selection to competitive scheduling to data-driven coaching decisions.</p>
+    </div>
+    <div class="club-grid">
+      <div class="club-card reveal">
+        <div class="club-card-icon">⚖️</div>
+        <h3>Fair Team Selection</h3>
+        <p>Use ratings to seed teams evenly across tournaments. No more debates about who should play — the numbers speak objectively.</p>
+      </div>
+      <div class="club-card reveal">
+        <div class="club-card-icon">📅</div>
+        <h3>Balanced Match Scheduling</h3>
+        <p>Schedule matches between players with similar ratings for close, competitive games that are fun for everyone and build skill.</p>
+      </div>
+      <div class="club-card reveal">
+        <div class="club-card-icon">🔍</div>
+        <h3>Talent Identification</h3>
+        <p>Spot fast-rising players whose rating is climbing quickly. Identify talent early before they're on anyone else's radar.</p>
+      </div>
+      <div class="club-card reveal">
+        <div class="club-card-icon">📣</div>
+        <h3>Showcase Your Best</h3>
+        <p>Publish leaderboards to celebrate top performers. Recognition motivates participation and builds club pride.</p>
+      </div>
+      <div class="club-card reveal">
+        <div class="club-card-icon">📊</div>
+        <h3>Club-Level Analytics</h3>
+        <p>See how your club's average rating compares across divisions, age groups, and sports. Make data-backed decisions on coaching focus.</p>
+      </div>
+      <div class="club-card reveal">
+        <div class="club-card-icon">🔄</div>
+        <h3>Season Reset Flexibility</h3>
+        <p>Each season you can carry ratings over, do a soft reset toward midpoint, or hard reset — configured per sport to match your competition format.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ ADMIN DASHBOARD ═══ -->
+<section class="admin-section" id="admin">
+  <div class="container">
+    <div class="admin-inner">
+      <div class="admin-text reveal">
+        <div class="tag" style="background:rgba(96,165,250,.15);color:var(--blue-300);border:1px solid rgba(96,165,250,.2)"><span class="dot" style="background:var(--blue-400)"></span> For Super Admins</div>
+        <h2 class="section-title">Total <span class="accent">Control.</span></h2>
+        <p class="section-desc" style="color:rgba(255,255,255,.6)">
+          Every rating parameter is configurable per sport. Recalculation runs on your schedule, not automatically — keeping you in full control of when and how ratings publish.
+        </p>
+        <div class="admin-features">
+          <div class="admin-feature">
+            <div class="af-icon">⚙️</div>
+            <div>
+              <h4>Per-Sport Configuration</h4>
+              <p>Set K-factors, provisional thresholds, visibility rules, starting ratings, and max change per match independently for each sport.</p>
+            </div>
+          </div>
+          <div class="admin-feature">
+            <div class="af-icon">🔄</div>
+            <div>
+              <h4>Manual Recalculation</h4>
+              <p>Ratings only update when you trigger recalculation. Run it for one sport or all sports at once. Full audit log kept for every run.</p>
+            </div>
+          </div>
+          <div class="admin-feature">
+            <div class="af-icon">👁️</div>
+            <div>
+              <h4>Visibility Control</h4>
+              <p>Decide who sees ratings for each sport: public to everyone, visible to club members only, or restricted to admins.</p>
+            </div>
+          </div>
+          <div class="admin-feature">
+            <div class="af-icon">🗓️</div>
+            <div>
+              <h4>Season Management</h4>
+              <p>Configure hard reset, soft reset, or carry-over per sport at season end. Soft reset gently pulls everyone toward midpoint for a fresh but fair start.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="reveal">
+        <div class="dashboard-preview">
+          <div class="dp-header">
+            <div class="dp-dot" style="background:#ef4444"></div>
+            <div class="dp-dot" style="background:#f59e0b"></div>
+            <div class="dp-dot" style="background:#10b981"></div>
+            <span class="dp-title">SLMS Admin — Ratings Dashboard</span>
+          </div>
+          <div class="dp-body">
+            <div class="dp-section-title">🏸 Badminton — Global Top 5</div>
+            <div class="dp-row">
+              <div class="dp-pos g">1</div>
+              <div class="dp-av" style="background:linear-gradient(135deg,#f59e0b,#d97706)">RK</div>
+              <div class="dp-info"><div class="n">Rahul Kumar</div><div class="s">Expert · 28 matches</div></div>
+              <div class="dp-rt">84.20</div>
+              <div class="dp-trend up">▲2.4</div>
+            </div>
+            <div class="dp-row">
+              <div class="dp-pos s">2</div>
+              <div class="dp-av" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8)">PS</div>
+              <div class="dp-info"><div class="n">Priya Sharma</div><div class="s">Expert · 31 matches</div></div>
+              <div class="dp-rt">81.75</div>
+              <div class="dp-trend up">▲1.1</div>
+            </div>
+            <div class="dp-row">
+              <div class="dp-pos b">3</div>
+              <div class="dp-av" style="background:linear-gradient(135deg,#10b981,#059669)">AM</div>
+              <div class="dp-info"><div class="n">Arjun Mehta</div><div class="s">Expert · 19 matches</div></div>
+              <div class="dp-rt">79.50</div>
+              <div class="dp-trend down">▼0.8</div>
+            </div>
+            <div class="dp-row">
+              <div class="dp-pos">4</div>
+              <div class="dp-av" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9)">SN</div>
+              <div class="dp-info"><div class="n">Sunita Nair</div><div class="s">Expert · 24 matches</div></div>
+              <div class="dp-rt">76.30</div>
+              <div class="dp-trend up">▲3.2</div>
+            </div>
+            <div class="dp-row">
+              <div class="dp-pos">5</div>
+              <div class="dp-av" style="background:linear-gradient(135deg,#f43f5e,#e11d48)">VT</div>
+              <div class="dp-info"><div class="n">Vikram Tiwari</div><div class="s">Advanced · 6 matches</div></div>
+              <div class="dp-rt">71.60</div>
+              <div class="dp-trend up">▲4.5</div>
+            </div>
+
+            <div class="dp-bar-section">
+              <div class="dp-section-title" style="padding-top:0">Club Rating Distribution</div>
+              <div class="dp-bar-row">
+                <div class="dp-bar-label">Legend</div>
+                <div class="dp-bar-track"><div class="dp-bar-fill" style="width:5%;background:#f59e0b"></div></div>
+                <div class="dp-bar-val">2</div>
+              </div>
+              <div class="dp-bar-row">
+                <div class="dp-bar-label">Expert</div>
+                <div class="dp-bar-track"><div class="dp-bar-fill" style="width:18%;background:#10b981"></div></div>
+                <div class="dp-bar-val">8</div>
+              </div>
+              <div class="dp-bar-row">
+                <div class="dp-bar-label">Advanced</div>
+                <div class="dp-bar-track"><div class="dp-bar-fill" style="width:45%;background:#3b82f6"></div></div>
+                <div class="dp-bar-val">21</div>
+              </div>
+              <div class="dp-bar-row">
+                <div class="dp-bar-label">Intermediate</div>
+                <div class="dp-bar-track"><div class="dp-bar-fill" style="width:70%;background:#60a5fa"></div></div>
+                <div class="dp-bar-val">33</div>
+              </div>
+              <div class="dp-bar-row">
+                <div class="dp-bar-label">Beginner</div>
+                <div class="dp-bar-track"><div class="dp-bar-fill" style="width:28%;background:#93c5fd"></div></div>
+                <div class="dp-bar-val">13</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ CONFIGURATION ═══ -->
+<section class="config-section section" id="config">
+  <div class="container">
+    <div class="reveal" style="text-align:center">
+      <div class="tag" style="margin:0 auto 20px"><span class="dot"></span> Configuration Examples</div>
+      <h2 class="section-title">Configured Your <span class="accent">Way</span></h2>
+      <p class="section-desc" style="margin:0 auto">These are examples of how an admin might configure two very different sports in SLMS.</p>
+    </div>
+    <div class="config-grid">
+      <div class="config-card blue-head reveal">
+        <div class="config-card-head"><span class="icon">🏸</span> Badminton — Competitive Config</div>
+        <div class="config-card-body">
+          <div class="config-item"><span class="ci-label">Starting Rating</span><span class="ci-val">50.00</span></div>
+          <div class="config-item"><span class="ci-label">Provisional Threshold</span><span class="ci-val">8 matches</span></div>
+          <div class="config-item"><span class="ci-label">K — Provisional</span><span class="ci-val">32.0</span></div>
+          <div class="config-item"><span class="ci-label">K — Established</span><span class="ci-val">16.0</span></div>
+          <div class="config-item"><span class="ci-label">K — Elite (>75)</span><span class="ci-val">8.0</span></div>
+          <div class="config-item"><span class="ci-label">Max Change / Match</span><span class="ci-val">15.0 pts</span></div>
+          <div class="config-item"><span class="ci-label">Season Reset</span><span class="ci-val">Soft (30%)</span></div>
+          <div class="config-item"><span class="ci-label">Visibility</span><span class="ci-val">Public</span></div>
+        </div>
+      </div>
+      <div class="config-card green-head reveal">
+        <div class="config-card-head"><span class="icon">♟️</span> Chess — Relaxed Config</div>
+        <div class="config-card-body">
+          <div class="config-item"><span class="ci-label">Starting Rating</span><span class="ci-val">50.00</span></div>
+          <div class="config-item"><span class="ci-label">Provisional Threshold</span><span class="ci-val">5 matches</span></div>
+          <div class="config-item"><span class="ci-label">K — Provisional</span><span class="ci-val">32.0</span></div>
+          <div class="config-item"><span class="ci-label">K — Established</span><span class="ci-val">16.0</span></div>
+          <div class="config-item"><span class="ci-label">K — Elite (>75)</span><span class="ci-val">8.0</span></div>
+          <div class="config-item"><span class="ci-label">Max Change / Match</span><span class="ci-val">10.0 pts</span></div>
+          <div class="config-item"><span class="ci-label">Season Reset</span><span class="ci-val">None (carry over)</span></div>
+          <div class="config-item"><span class="ci-label">Visibility</span><span class="ci-val">Club Members</span></div>
+        </div>
+      </div>
+      <div class="config-card gold-head reveal">
+        <div class="config-card-head"><span class="icon">🏏</span> Cricket — Team Config</div>
+        <div class="config-card-body">
+          <div class="config-item"><span class="ci-label">Starting Rating</span><span class="ci-val">50.00</span></div>
+          <div class="config-item"><span class="ci-label">Provisional Threshold</span><span class="ci-val">10 matches</span></div>
+          <div class="config-item"><span class="ci-label">K — Provisional</span><span class="ci-val">32.0</span></div>
+          <div class="config-item"><span class="ci-label">K — Established</span><span class="ci-val">16.0</span></div>
+          <div class="config-item"><span class="ci-label">K — Elite (>75)</span><span class="ci-val">8.0</span></div>
+          <div class="config-item"><span class="ci-label">Max Change / Match</span><span class="ci-val">12.0 pts</span></div>
+          <div class="config-item"><span class="ci-label">Season Reset</span><span class="ci-val">Hard (full reset)</span></div>
+          <div class="config-item"><span class="ci-label">Visibility</span><span class="ci-val">Admins Only</span></div>
+        </div>
+      </div>
+      <div class="config-card dark-head reveal">
+        <div class="config-card-head"><span class="icon">🔄</span> Season Reset — How It Works</div>
+        <div class="config-card-body">
+          <div class="config-item"><span class="ci-label">None</span><span class="ci-val">Carry over as-is</span></div>
+          <div class="config-item"><span class="ci-label">Soft Reset</span><span class="ci-val">Pull toward 50.0</span></div>
+          <div class="config-item" style="padding-left:12px"><span class="ci-label" style="font-size:12px">e.g. 84 → 84 + (50−84)×0.3</span><span class="ci-val">= 73.8</span></div>
+          <div class="config-item"><span class="ci-label">Hard Reset</span><span class="ci-val">Back to 50.00</span></div>
+          <div class="config-item"><span class="ci-label">After Reset</span><span class="ci-val">All → Provisional</span></div>
+          <div class="config-item"><span class="ci-label">Peak Rating</span><span class="ci-val">Preserved always</span></div>
+          <div class="config-item"><span class="ci-label">History</span><span class="ci-val">Never deleted</span></div>
+          <div class="config-item"><span class="ci-label">Triggered by</span><span class="ci-val">Super Admin only</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ CTA ═══ -->
+<section class="cta-section" id="launch">
+  <div class="container">
+    <div class="cta-inner reveal">
+      <h2>READY TO<br/>PLAY RANKED?</h2>
+      <p>Join your club on SLMS and start building your official rating today. Every match counts.</p>
+      <div class="cta-buttons">
+        <a href="/register" class="btn-cta-white">🏆 Create Your Account</a>
+        <a href="/api/docs" class="btn-cta-outline">📡 View API Docs</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FOOTER ═══ -->
+<footer>
+  <div class="container">
+    <p>Built with ❤️ on <strong>SLMS — Sports League Management System</strong> &nbsp;·&nbsp; FastAPI + SQLite + Elo Mathematics</p>
+  </div>
+</footer>
+
+<script>
+// ── Scroll nav shadow ─────────────────────────────────────
+window.addEventListener('scroll', () => {
+  document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 20);
+});
+
+// ── Scroll reveal ─────────────────────────────────────────
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach((entry, i) => {
+    if (entry.isIntersecting) {
+      setTimeout(() => entry.target.classList.add('visible'), i * 60);
+      observer.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.12 });
+
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+// ── Animated counters in stats bar ───────────────────────
+function animateCount(el, target, suffix = '', prefix = '') {
+  let start = 0;
+  const duration = 1600;
+  const step = (timestamp) => {
+    if (!start) start = timestamp;
+    const progress = Math.min((timestamp - start) / duration, 1);
+    const ease = 1 - Math.pow(1 - progress, 3);
+    el.textContent = prefix + Math.floor(ease * target) + suffix;
+    if (progress < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+const statsObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const nums = document.querySelectorAll('.stat-num');
+      nums[0].innerHTML = '<span id="c1">0</span><span>+</span>';
+      nums[1].innerHTML = '<span id="c2a">0</span><span>–</span><span id="c2b">0</span>';
+      nums[2].innerHTML = '<span id="c3">0</span>';
+      nums[3].innerHTML = '<span id="c4">0</span><span>×</span>';
+      animateCount(document.getElementById('c1'),  18);
+      animateCount(document.getElementById('c2a'), 0);
+      animateCount(document.getElementById('c2b'), 100);
+      animateCount(document.getElementById('c3'),  5);
+      animateCount(document.getElementById('c4'),  4);
+      statsObserver.disconnect();
+    }
+  });
+}, { threshold: 0.5 });
+statsObserver.observe(document.querySelector('.stats-bar'));
+
+// ── Rating number colour coding ───────────────────────────
+// Already handled by inline styles in the live card
+</script>
+</body>
+</html>
