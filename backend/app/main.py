@@ -76,10 +76,11 @@ def health():
 BASE_DIR   = pathlib.Path(__file__).resolve().parent.parent.parent
 STATIC_DIR = BASE_DIR / "static"
 
+# Serve brochure at /brochure
 @app.get("/brochure", include_in_schema=False)
 def brochure():
     return FileResponse(str(STATIC_DIR / "ratings-brochure.html"))
-
+    
 @app.get("/{full_path:path}", include_in_schema=False)
 def serve_frontend(full_path: str):
     index = STATIC_DIR / "index.html"
