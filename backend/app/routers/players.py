@@ -53,7 +53,7 @@ def list_players(
             "date_of_birth": p['date_of_birth'],
             "gender": p['gender'],
             "is_active": p['is_active'],
-            "is_verified": p['is_verified'],
+            "is_verified": bool(p['is_verified']),
             "created_at": p['created_at'],
         }
         for p in players_rows
@@ -111,7 +111,7 @@ def create_player(
         "date_of_birth": player_row['date_of_birth'],
         "gender": player_row['gender'],
         "is_active": player_row['is_active'],
-        "is_verified": player_row['is_verified'],
+        "is_verified": bool(player_row['is_verified']),
         "created_at": player_row['created_at'],
     }
 
@@ -143,7 +143,7 @@ def get_player(player_id: int, current_user: User = Depends(get_current_user)):
         "date_of_birth": player_row['date_of_birth'],
         "gender": player_row['gender'],
         "is_active": player_row['is_active'],
-        "is_verified": player_row['is_verified'],
+        "is_verified": bool(player_row['is_verified']),
         "password_reset_required": bool(player_row.get('password_reset_required', 0)),
         "created_at": player_row['created_at'],
     }
@@ -197,7 +197,7 @@ def update_player(
         "date_of_birth": player_row['date_of_birth'],
         "gender": player_row['gender'],
         "is_active": player_row['is_active'],
-        "is_verified": player_row['is_verified'],
+        "is_verified": bool(player_row['is_verified']),
         "created_at": player_row['created_at'],
     }
 
