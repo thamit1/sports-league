@@ -1,5 +1,30 @@
 # Quick Reference: Graph Update Workflow
 
+## Querying the Graph (fast lookups for "where is X / who calls Y")
+
+Once a graph exists, **[graph_q.py](graph_q.py)** is the cheap way to query it
+— terse one-line output per match, ~20× cheaper than grep+read for cross-file
+questions.
+
+```bash
+python graph_q.py stats                       # summary metrics
+python graph_q.py find <name>                 # fuzzy substring search
+python graph_q.py where <name>                # exact match → file:line
+python graph_q.py in-file <path>              # classes + functions defined in a file
+python graph_q.py callers <name>              # who calls this function?
+python graph_q.py callees <name>              # what does it call?
+python graph_q.py imports-of <module>         # who imports this module?
+python graph_q.py imports-by <file>           # what does this file import?
+python graph_q.py inherits <class>            # parents + children
+```
+
+Picks the newest `graph_output/graph_*.json` automatically. Override with
+`--graph <path>` or env var `SLMS_GRAPH=<path>`. **Known limitation:** call
+edges through aliased module imports (e.g. `rating_engine.run_full_recalculation(...)`)
+aren't always tracked by the generator — fall back to `grep` for full coverage.
+
+---
+
 ## Daily Development
 
 ### After Making Code Changes
@@ -158,7 +183,8 @@ chmod +x run_graph_generator.py
 ### Missing `compare_graphs.py`
 Make sure all Python files are in the same directory:
 - `graph_generator.py`
-- `compare_graphs.py` 
+- `compare_graphs.py`
+- `graph_q.py`
 - `update_graph.sh` (or `.bat`)
 
 ### No Changes Detected
@@ -174,6 +200,27 @@ No changes in code? Previous and current will be identical.
 ```bash
 python compare_graphs.py graph_output/previous_graph.json graph_output/current_graph.json
 ```
+
+### Query the Graph (without re-reading source files)
+
+```bash
+# Where is a symbol defined?
+python graph_q.py where process_single_match
+# → function  process_single_match    backend/app/services/rating_engine.py:231
+
+# What calls it?
+python graph_q.py callers process_single_match
+
+# What's in a file?
+python graph_q.py in-file ratings.py
+
+# What does a file import?
+python graph_q.py imports-by routers/ratings.py
+```
+
+Use this **before** grep+read when you only need structure (location,
+call edges, imports). For semantics — what code actually does — still
+read the source.
 
 ### See What Files Changed
 
@@ -246,4 +293,22 @@ python -c "import json; d=json.load(open('graph_output/current_graph.json')); pr
 
 # List all new imports from comparison
 grep "New dependencies" graph_output/comparison_*.txt -A 20
+
+# Project overview without opening the HTML report
+python graph_q.py stats
+
+# All symbols in a file, one per line
+python graph_q.py in-file <filename>
 ```
+
+---
+
+## Companion Scripts
+
+| Script | Purpose |
+|---|---|
+| [graph_generator.py](graph_generator.py) | Build the graph from source. Driven by `update_graph.sh` / `.bat`. |
+| [compare_graphs.py](compare_graphs.py) | Diff two graphs (used by `--compare` flag). |
+| [run_graph_generator.py](run_graph_generator.py) | Programmatic wrapper around `graph_generator.py`. |
+| [graph_q.py](graph_q.py) | Read-only query CLI documented at the top of this file — the fast path for "where / who-calls / who-imports" questions. |
+| [update_graph.sh](update_graph.sh) / [update_graph.bat](update_graph.bat) | One-shot regenerate + (optional) compare. |
