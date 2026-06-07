@@ -1,4 +1,4 @@
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import Optional, List, Dict, Any
 from datetime import datetime, date
 import enum
@@ -17,11 +17,13 @@ class UserRole(str, enum.Enum):
     VIEWER        = "viewer"
 
 class MatchStatus(str, enum.Enum):
-    SCHEDULED   = "scheduled"
-    IN_PROGRESS = "in_progress"
-    COMPLETED   = "completed"
-    CANCELLED   = "cancelled"
-    POSTPONED   = "postponed"
+    SCHEDULED            = "scheduled"
+    IN_PROGRESS          = "in_progress"
+    AWAITING_CONFIRMATION = "awaiting_confirmation"   # finalized by score keeper, waiting on captain sign-off
+    DISPUTED             = "disputed"                  # a captain rejected the score; admin must resolve
+    COMPLETED            = "completed"
+    CANCELLED            = "cancelled"
+    POSTPONED            = "postponed"
 
 class TournamentStatus(str, enum.Enum):
     DRAFT        = "draft"
@@ -66,6 +68,13 @@ class RankingScope(str, enum.Enum):
     AGE_GROUP = "age_group"
     DIVISION  = "division"
 
+class LeagueStatus(str, enum.Enum):
+    DRAFT        = "draft"
+    REGISTRATION = "registration"
+    IN_PROGRESS  = "in_progress"
+    COMPLETED    = "completed"
+    CANCELLED    = "cancelled"
+
 
 # ─── Data Models ──────────────────────────────────────────────────────────────
 
@@ -88,6 +97,7 @@ class User:
     password_reset_required: bool = False
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    roles: List[str] = field(default_factory=list)   # global-scope roles via user_assignments
 
     @property
     def full_name(self):
@@ -337,6 +347,37 @@ class RecalculationJob:
     error_message: Optional[str] = None
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
+    created_at: Optional[str] = None
+
+    def to_dict(self):
+        return asdict(self)
+
+
+@dataclass
+class League:
+    id: int
+    name: str
+    organizer_id: int                # Club hosting the league
+    status: str = "draft"
+    description: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    venue: Optional[str] = None
+    max_teams_per_sport: int = 16
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+    def to_dict(self):
+        return asdict(self)
+
+
+@dataclass
+class LeagueSport:
+    """One row per (league, sport). Backed by a tournament for matches/registration."""
+    id: int
+    league_id: int
+    sport_id: int
+    tournament_id: int
     created_at: Optional[str] = None
 
     def to_dict(self):

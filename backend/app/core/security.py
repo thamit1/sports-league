@@ -57,6 +57,12 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     if not user_data:
         raise HTTPException(status_code=401, detail="User not found or inactive")
 
+    role_rows = execute_query(
+        "SELECT role FROM user_assignments WHERE user_id = ? AND scope_type = 'global' AND scope_id IS NULL",
+        (int(user_id),), fetch_all=True,
+    ) or []
+    role_list = sorted({(r['role'] or '').lower() for r in role_rows if r.get('role')})
+
     return User(
         id=user_data['id'],
         email=user_data['email'],
@@ -75,15 +81,48 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         password_reset_required=bool(user_data.get('password_reset_required', 0)),
         created_at=user_data['created_at'],
         updated_at=user_data['updated_at'],
+        roles=role_list,
     )
 
 
-def require_roles(*roles: str):
+def get_user_roles(user_id: int, scope_type: str = "global", scope_id=None) -> set:
+    """All roles a user holds at the given scope. 'global' scope = capability-level roles."""
+    if scope_id is None:
+        rows = execute_query(
+            "SELECT role FROM user_assignments WHERE user_id = ? AND scope_type = ? AND scope_id IS NULL",
+            (user_id, scope_type), fetch_all=True,
+        ) or []
+    else:
+        rows = execute_query(
+            "SELECT role FROM user_assignments WHERE user_id = ? AND scope_type = ? AND scope_id = ?",
+            (user_id, scope_type, scope_id), fetch_all=True,
+        ) or []
+    return {(r['role'] or '').lower() for r in rows if r.get('role')}
+
+
+def has_role(user_id: int, role: str, scope_type: str = "global", scope_id=None) -> bool:
+    return role.lower() in get_user_roles(user_id, scope_type, scope_id)
+
+
+def user_has_any_role(user, required) -> bool:
+    """True if user holds any of `required` at global scope (or via legacy users.role fallback)."""
+    required_l = {(r.value if hasattr(r, 'value') else r).lower() for r in required}
+    if get_user_roles(user.id, "global") & required_l:
+        return True
+    # Fallback: respect users.role for resilience during transition
+    return (user.role or '').lower() in required_l
+
+
+def require_roles(*roles):
+    """
+    Allow the request only if the current user holds *any* of `roles` at global scope.
+    Reads from user_assignments (Phase 2 source of truth). Falls back to users.role for safety.
+    """
     def _dependency(current_user=Depends(get_current_user)):
-        if current_user.role not in roles:
+        if not user_has_any_role(current_user, roles):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Required role(s): {', '.join(roles)}",
+                detail=f"Required role(s): {', '.join((r.value if hasattr(r,'value') else r) for r in roles)}",
             )
         return current_user
     return _dependency

@@ -330,15 +330,19 @@ future migration work but not actively driving schema changes yet.
 - [x] Auto-backfill of NULL `created_at`/`updated_at` across tables on startup
 - [x] Deployed to BigRock shared hosting via Passenger + a2wsgi
 
-## 📌 Planned Next Phases
+## 📌 Backlog
 
-- [ ] **Phase 2:** Gamification (points, badges, leaderboards)
-- [ ] **Phase 3:** Media uploads (player photos, club logos) — needs disk-quota planning on shared hosting
-- [ ] **Phase 4:** Federation management (cross-club events)
-- [ ] **Phase 5:** Advanced analytics & reporting
-- [ ] **Phase 6:** ~~Real-time scoring via WebSockets~~ → **SSE or polling** (WebSockets not viable under Passenger)
-- [ ] **Phase 7:** Mobile-optimised PWA
-- [ ] **Future:** Alembic-driven migrations once the schema stabilises
+The current roadmap lives in [BACKLOG.md](BACKLOG.md). At a glance:
+
+- 🚧 **Phase 4** — Multi-sport League + Captain workflows (in progress)
+- ⏳ **Phase 3** — Public Viewer + Member Self-Enrollment
+- ⏳ **Phase 5** — Facility Booking & Management
+- ⏳ **Phase 6** — Sport-specific Scoring UI (cricket, tennis, chess, …)
+- 🚫 Federation Admin — deferred until a real inter-club event needs it
+
+The older "gamification / media uploads / PWA / WebSockets" wishlist isn't
+abandoned, just not currently scheduled — flag any of them on
+[BACKLOG.md](BACKLOG.md) when you want them prioritised.
 
 ---
 

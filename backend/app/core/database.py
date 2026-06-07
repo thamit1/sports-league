@@ -592,6 +592,151 @@ def init_db():
                 )
             """)
 
+        # ── Leagues (Phase 4: multi-sport competition wrappers) ───────
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS leagues (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                organizer_id INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'draft',
+                description TEXT,
+                start_date TEXT,
+                end_date TEXT,
+                venue TEXT,
+                max_teams_per_sport INTEGER DEFAULT 16,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (organizer_id) REFERENCES clubs(id)
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS league_sports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                league_id INTEGER NOT NULL,
+                sport_id INTEGER NOT NULL,
+                tournament_id INTEGER NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(league_id, sport_id),
+                FOREIGN KEY (league_id) REFERENCES leagues(id),
+                FOREIGN KEY (sport_id) REFERENCES sports(id),
+                FOREIGN KEY (tournament_id) REFERENCES tournaments(id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_league_sports_league ON league_sports(league_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_league_sports_tournament ON league_sports(tournament_id)")
+
+        # Add league_id to matches if missing (for matches scheduled directly under a league context)
+        if not table_has_column(conn, 'matches', 'league_id'):
+            cursor.execute("ALTER TABLE matches ADD COLUMN league_id INTEGER")
+
+        # ── User role assignments (Phase 2: scoped, composable roles) ─
+        # One row = "user X holds role R at scope (type, id)".
+        # scope_type ∈ {global, club, tournament, match}. scope_id NULL for global.
+        # A user can hold many rows. Permission checks join through this table.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_assignments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                scope_type TEXT NOT NULL DEFAULT 'global',
+                scope_id INTEGER,
+                role TEXT NOT NULL,
+                granted_by INTEGER,
+                granted_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, scope_type, scope_id, role),
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (granted_by) REFERENCES users(id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_assignments_user ON user_assignments(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_assignments_scope ON user_assignments(scope_type, scope_id, role)")
+
+        # ── Dedupe (SQLite's UNIQUE treats NULL != NULL, so the table-level
+        # constraint didn't actually prevent duplicate global-scope rows).
+        cursor.execute("""
+            DELETE FROM user_assignments
+             WHERE id NOT IN (
+                 SELECT MIN(id) FROM user_assignments
+                  GROUP BY user_id, scope_type, IFNULL(scope_id, -1), role
+             )
+        """)
+        deduped = cursor.rowcount
+        if deduped:
+            logger.info("Removed %s duplicate user_assignment row(s)", deduped)
+
+        # Partial unique index that actually enforces uniqueness when scope_id IS NULL.
+        cursor.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_user_assignments_global
+                ON user_assignments(user_id, scope_type, role)
+             WHERE scope_id IS NULL
+        """)
+
+        # Backfill: every user with a non-null `users.role` gets a global-scope row,
+        # but only if they don't already have it. NOT EXISTS handles NULL correctly.
+        cursor.execute("""
+            INSERT INTO user_assignments (user_id, scope_type, scope_id, role)
+            SELECT u.id, 'global', NULL, u.role FROM users u
+             WHERE u.role IS NOT NULL AND u.role <> ''
+               AND NOT EXISTS (
+                 SELECT 1 FROM user_assignments a
+                  WHERE a.user_id = u.id AND a.scope_type = 'global'
+                    AND a.scope_id IS NULL AND LOWER(a.role) = LOWER(u.role)
+               )
+        """)
+        backfilled = cursor.rowcount
+        if backfilled:
+            logger.info("Backfilled %s user(s) into user_assignments at global scope", backfilled)
+
+        # Heal drift: if users.role names a role that NO LONGER exists in user_assignments
+        # at global scope (e.g. an admin revoked the chip via the UI before the
+        # sync-on-revoke fix landed), demote users.role to a remaining role or 'viewer'.
+        _precedence = ['viewer', 'player', 'official', 'score_keeper', 'club_manager', 'club_admin', 'super_admin']
+        cursor.execute("""
+            SELECT u.id, u.role
+              FROM users u
+             WHERE u.role IS NOT NULL AND u.role <> ''
+               AND NOT EXISTS (
+                 SELECT 1 FROM user_assignments a
+                  WHERE a.user_id = u.id AND a.scope_type = 'global' AND a.scope_id IS NULL
+                    AND LOWER(a.role) = LOWER(u.role)
+               )
+        """)
+        drift_users = cursor.fetchall()
+        healed = 0
+        for row in drift_users:
+            remaining = cursor.execute(
+                "SELECT role FROM user_assignments WHERE user_id = ? AND scope_type = 'global' AND scope_id IS NULL",
+                (row['id'],),
+            ).fetchall()
+            roles = [(r['role'] or '').lower() for r in remaining if r.get('role')]
+            if roles:
+                best = max(roles, key=lambda r: _precedence.index(r) if r in _precedence else -1)
+            else:
+                best = 'viewer'
+            cursor.execute(
+                "UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (best, row['id']),
+            )
+            healed += 1
+        if healed:
+            logger.info("Healed primary-role drift for %s user(s)", healed)
+
+        # ── Match confirmations (Phase 4C: captain sign-off / dispute) ─
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS match_confirmations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                match_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                team_side TEXT NOT NULL,            -- 'a' or 'b'
+                action TEXT NOT NULL,                -- 'confirmed' or 'disputed'
+                notes TEXT,
+                submitted_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(match_id, user_id),
+                FOREIGN KEY (match_id) REFERENCES matches(id),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_match_confirmations_match ON match_confirmations(match_id)")
+
         # ── Match assignments (score keepers, extra referees, etc.) ──
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS match_assignments (

@@ -333,22 +333,24 @@ function initials(u) {
   return ((u.first_name||'')[0]||'') + ((u.last_name||'')[0]||'');
 }
 
-function isViewer() {
-  return (State.user?.role || '').toLowerCase() === 'viewer';
+// Phase 2: roles are an array. Helpers consult both .roles[] and .role for safety.
+function _userRoles() {
+  const set = new Set();
+  (State.user?.roles || []).forEach(r => set.add((r||'').toLowerCase()));
+  if (State.user?.role) set.add(State.user.role.toLowerCase());
+  return set;
+}
+function hasRole(...roles) {
+  const mine = _userRoles();
+  return roles.some(r => mine.has(r));
 }
 
-function isAdmin() {
-  return ['super_admin', 'club_admin'].includes((State.user?.role || '').toLowerCase());
-}
-
-function isSuperAdmin() {
-  return (State.user?.role || '').toLowerCase() === 'super_admin';
-}
-
-function isScoreCapable() {
-  // Roles that can see the Scoring page: dedicated score-keeper + anyone who could already score matches.
-  return ['super_admin','club_admin','club_manager','official','score_keeper'].includes((State.user?.role || '').toLowerCase());
-}
+function isViewer()       { return hasRole('viewer') && _userRoles().size === 1; }
+function isAdmin()        { return hasRole('super_admin', 'club_admin'); }
+function isSuperAdmin()   { return hasRole('super_admin'); }
+function isScoreCapable() { return hasRole('super_admin','club_admin','club_manager','official','score_keeper'); }
+function isCaptainAnywhere() { return (State.user?.captain_team_ids || []).length > 0; }
+function isCaptainOf(teamId) { return (State.user?.captain_team_ids || []).includes(teamId); }
 
 function showAlert(msg, type = 'error') {
   const a = document.getElementById('global-alert');
@@ -591,7 +593,7 @@ async function renderDashboard() {
     <tr class="clickable" onclick="navigate('match-detail',{id:${m.id}})">
       <td><strong>${m.team_a||'—'}</strong> vs <strong>${m.team_b||'—'}</strong></td>
       <td>${m.sport||'—'}</td>
-      <td>${m.score_a != null ? JSON.stringify(m.score_a) : '—'} : ${m.score_b != null ? JSON.stringify(m.score_b) : '—'}</td>
+      <td>${formatScore(m.sport, m.score_a)} : ${formatScore(m.sport, m.score_b)}</td>
       <td>${badge(m.status)}</td>
       <td>${fmtDateTime(m.scheduled_at)}</td>
     </tr>`).join('') : '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:24px">No matches yet</td></tr>';
@@ -845,12 +847,26 @@ async function renderPlayerDetail() {
       <div style="font-weight:700;font-size:15px">Admin Controls</div>
       ${isSuperAdmin() ? `<button class="btn btn-danger btn-sm" onclick="requirePasswordReset(${player.id})">Force Password Reset</button>` : ''}
     </div>
+
     <div class="form-group">
-      <label class="form-label">Role</label>
+      <label class="form-label">Roles (multiple allowed)</label>
+      <div id="role-chips" style="min-height:32px;margin-bottom:8px">Loading…</div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <select class="form-control" id="add-role-select" style="width:auto;min-width:180px">
+          ${['viewer','player','official','score_keeper','club_manager','club_admin','super_admin'].map(role => `
+            <option value="${role}">${role.replace(/_/g,' ')}</option>`).join('')}
+        </select>
+        <button class="btn btn-secondary btn-sm" onclick="grantRole(${player.id})">+ Add Role</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Primary Role (display)</label>
       <select class="form-control" id="admin-role">
         ${['viewer','player','official','score_keeper','club_manager','club_admin','super_admin'].map(role => `
           <option value="${role}" ${player.role===role ? 'selected':''}>${role.replace(/_/g,' ')}</option>`).join('')}
       </select>
+      <small class="form-text text-muted">The primary role still drives some legacy UI behaviour. Add additional roles via the Roles field above.</small>
     </div>
     <div class="form-group">
       <label class="form-label">Temporary password</label>
@@ -960,6 +976,62 @@ function sparklineSVG(history) {
     <polyline points="${polyline}" fill="none" stroke="${lineColor}" stroke-width="2"/>
     ${dots}
   </svg>`;
+}
+
+const ALL_ROLES = ['viewer','player','official','score_keeper','club_manager','club_admin','super_admin'];
+
+async function loadUserAssignments(userId) {
+  const el = document.getElementById('role-chips');
+  const sel = document.getElementById('add-role-select');
+  if (!el || !userId) return;
+  try {
+    const rows = await API.get(`/auth/users/${userId}/assignments`);
+    const globals = rows.filter(r => r.scope_type === 'global');
+    const scoped  = rows.filter(r => r.scope_type !== 'global');
+    const held = new Set(globals.map(r => r.role.toLowerCase()));
+
+    el.innerHTML = (globals.length
+      ? globals.map(r => `
+          <span class="assign-chip">
+            <strong>${r.role.replace(/_/g,' ')}</strong>
+            <button title="Remove" onclick="revokeRole(${userId},${r.id},'${r.role}')">✕</button>
+          </span>`).join('')
+      : '<em style="color:#94a3b8">No roles assigned.</em>'
+    ) + (scoped.length ? `
+      <div style="font-size:11px;color:var(--gray-500);margin-top:6px">Scoped: ${scoped.map(r => `${r.role} @ ${r.scope_type}#${r.scope_id}`).join(', ')}</div>` : '');
+
+    // Filter the Add-Role dropdown to roles the user does NOT already hold
+    if (sel) {
+      const available = ALL_ROLES.filter(r => !held.has(r));
+      if (available.length === 0) {
+        sel.innerHTML = '<option value="">All roles already granted</option>';
+        sel.disabled = true;
+      } else {
+        sel.innerHTML = available.map(r => `<option value="${r}">${r.replace(/_/g,' ')}</option>`).join('');
+        sel.disabled = false;
+      }
+    }
+  } catch (e) { el.innerHTML = `<span style="color:#dc2626">${e.message}</span>`; }
+}
+
+async function grantRole(userId) {
+  const sel  = document.getElementById('add-role-select');
+  const role = sel?.value;
+  if (!role) { showAlert('No role selected — user already has every role.'); return; }
+  try {
+    await API.post(`/auth/users/${userId}/assignments`, { role, scope_type: 'global', scope_id: null });
+    showAlert(`Granted ${role.replace(/_/g,' ')}.`, 'success');
+    loadUserAssignments(userId);
+  } catch (e) { showAlert(e.message); }
+}
+
+async function revokeRole(userId, assignmentId, role) {
+  if (!confirm(`Remove "${role.replace(/_/g,' ')}" from this user?`)) return;
+  try {
+    await API.delete(`/auth/users/${userId}/assignments/${assignmentId}`);
+    showAlert('Role removed.', 'success');
+    loadUserAssignments(userId);
+  } catch (e) { showAlert(e.message); }
 }
 
 async function requirePasswordReset(userId) {
@@ -1163,6 +1235,27 @@ async function renderTeamDetail() {
     </div>
     <button class="btn btn-primary" onclick="openModal('add-member-modal')">+ Add Player</button>
   </div>
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div style="font-weight:700">🎯 Captains</div>
+      ${isAdmin() || (State.user?.role||'').toLowerCase()==='club_manager'
+        ? `<button class="btn btn-secondary btn-sm" onclick="openTeamCaptainModal(${id})">+ Set Captain</button>`
+        : ''}
+    </div>
+    <div id="team-captains-list" style="min-height:28px;color:#94a3b8;font-size:13px">Loading…</div>
+  </div>
+  ${modalHTML('team-captain-modal','Set Team Captain',`
+    <input type="hidden" id="tc-team-id" value="${id}"/>
+    <div class="form-group">
+      <label class="form-label">User</label>
+      <input class="form-control" id="tc-search" placeholder="Search by name or email…" oninput="captainSearchDebounced(this.value)"/>
+      <div id="tc-results" style="margin-top:6px;max-height:180px;overflow-y:auto"></div>
+      <input type="hidden" id="tc-user-id"/>
+      <div id="tc-selected" style="margin-top:6px;font-size:12px;color:var(--gray-500)"></div>
+    </div>`,
+    `<button class="btn btn-secondary" onclick="closeModal('team-captain-modal')">Cancel</button>
+     <button class="btn btn-primary" onclick="submitSetCaptain()">Set as Captain</button>`
+  )}
   <div class="card" style="padding:0;overflow:hidden">
     <div style="padding:16px 20px;border-bottom:1px solid var(--gray-100);font-weight:700">👥 Roster (${members.length})</div>
     <div class="table-wrap">
@@ -1208,6 +1301,121 @@ async function submitAddMember(teamId) {
   } catch(e) { showAlert(e.message); }
 }
 
+async function loadTeamCaptains(teamId) {
+  const el = document.getElementById('team-captains-list');
+  if (!el || !teamId) return;
+  try {
+    const rows = await API.get(`/teams/${teamId}/captains`);
+    if (!rows.length) { el.innerHTML = '<em>No captains assigned yet.</em>'; return; }
+    el.innerHTML = rows.map(c => `
+      <span class="assign-chip">
+        <strong>${c.user_name||'—'}</strong>
+        ${c.email ? `<span style="color:var(--gray-500);font-size:11px">${c.email}</span>` : ''}
+        ${isAdmin() || (State.user?.role||'').toLowerCase()==='club_manager'
+          ? `<button title="Remove captain" onclick="removeCaptain(${teamId},${c.user_id})">✕</button>` : ''}
+      </span>`).join('');
+  } catch (e) { el.innerHTML = `<span style="color:#dc2626">${e.message}</span>`; }
+}
+
+let _captainSearchTimer = null;
+function captainSearchDebounced(q) {
+  clearTimeout(_captainSearchTimer);
+  _captainSearchTimer = setTimeout(() => doCaptainSearch(q), 250);
+}
+async function doCaptainSearch(q) {
+  const results = document.getElementById('tc-results');
+  if (!q || q.length < 2) { results.innerHTML = ''; return; }
+  try {
+    const players = await API.get('/players/', { search: q, limit: 8 });
+    if (!players.length) { results.innerHTML = '<div style="color:#94a3b8;padding:4px">No matches.</div>'; return; }
+    results.innerHTML = players.map(p => `
+      <div style="padding:6px 8px;border-radius:6px;cursor:pointer;font-size:13px" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''" onclick="pickCaptainUser(${p.id},'${(p.full_name||'').replace(/'/g,'')}')">
+        <strong>${p.full_name||'—'}</strong> <span style="color:var(--gray-500);font-size:11px">${p.email||''}</span>
+      </div>`).join('');
+  } catch (e) { results.innerHTML = `<div style="color:#dc2626">${e.message}</div>`; }
+}
+function pickCaptainUser(id, name) {
+  document.getElementById('tc-user-id').value = id;
+  document.getElementById('tc-selected').textContent = 'Selected: ' + name;
+  document.getElementById('tc-results').innerHTML = '';
+}
+function openTeamCaptainModal(teamId) {
+  document.getElementById('tc-team-id').value = teamId;
+  document.getElementById('tc-user-id').value = '';
+  document.getElementById('tc-search').value = '';
+  document.getElementById('tc-selected').textContent = '';
+  document.getElementById('tc-results').innerHTML = '';
+  openModal('team-captain-modal');
+}
+async function submitSetCaptain() {
+  const teamId = document.getElementById('tc-team-id').value;
+  const userId = document.getElementById('tc-user-id').value;
+  if (!userId) { showAlert('Pick a user first'); return; }
+  try {
+    await API.post(`/teams/${teamId}/captains`, { user_id: parseInt(userId) });
+    closeModal('team-captain-modal');
+    showAlert('Captain set.', 'success');
+    loadTeamCaptains(teamId);
+  } catch (e) { showAlert(e.message); }
+}
+async function removeCaptain(teamId, userId) {
+  if (!confirm('Remove this captain?')) return;
+  try {
+    await API.delete(`/teams/${teamId}/captains/${userId}`);
+    loadTeamCaptains(teamId);
+  } catch (e) { showAlert(e.message); }
+}
+
+
+// ─── My Teams (captain dashboard) ──────────────────────────────────
+
+async function renderMyTeams() {
+  if (!isCaptainAnywhere()) return '<div class="alert alert-warning">You are not a captain of any team.</div>';
+  let teams = [];
+  try { teams = await API.get('/teams/captain/mine'); }
+  catch (e) { return `<div class="alert alert-error">${e.message}</div>`; }
+  if (!teams.length) return '<div class="empty-state" style="text-align:center;padding:32px;color:#94a3b8">No active teams.</div>';
+
+  // For each team, fetch upcoming matches (status != completed/cancelled)
+  const teamCards = await Promise.all(teams.map(async t => {
+    let matches = [];
+    try { matches = await API.get('/matches', { sport_id: t.sport_id, limit: 50 }); }
+    catch(e) {}
+    // Filter to matches involving this team and not completed/cancelled
+    const upcoming = matches.filter(m =>
+      (m.team_a_id === t.id || m.team_b_id === t.id) &&
+      m.status !== 'completed' && m.status !== 'cancelled'
+    ).slice(0, 5);
+    return { t, upcoming };
+  }));
+
+  return `
+  <div class="page-header">
+    <div><div class="page-title">🏅 My Teams</div><div class="page-sub">${teams.length} team${teams.length===1?'':'s'} you captain</div></div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px">
+    ${teamCards.map(({t, upcoming}) => `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
+          <div>
+            <div style="font-weight:700;font-size:15px">${t.name}</div>
+            <div style="font-size:12px;color:var(--gray-500);margin-top:2px">${t.sport_icon||sportIcon(t.sport_name)} ${t.sport_name||'—'} · ${t.club_name||'—'}</div>
+            <div style="font-size:11px;color:var(--gray-500)">${t.age_group||'Open'} · ${t.division||'No Division'}</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="navigate('team-detail',{id:${t.id}})">Open</button>
+        </div>
+        <div style="margin-top:12px;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.04em">Upcoming matches</div>
+        ${upcoming.length ? upcoming.map(m => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px solid var(--gray-100);font-size:12px;cursor:pointer" onclick="navigate('match-detail',{id:${m.id}})">
+            <div>vs <strong>${m.team_a_id === t.id ? 'opponent' : ''}</strong> · ${fmtDate(m.scheduled_at)}</div>
+            <div>${badge(m.status)}</div>
+          </div>`).join('') :
+          '<div style="font-size:12px;color:var(--gray-500);margin-top:6px">No upcoming matches scheduled.</div>'}
+      </div>`).join('')}
+  </div>`;
+}
+
+
 async function removeMember(teamId, playerId) {
   if (!confirm('Remove this player from the team?')) return;
   try {
@@ -1234,8 +1442,9 @@ async function renderMatches() {
 
   const rows = matches.map(m => {
     const ta = teamMap[m.team_a_id], tb = teamMap[m.team_b_id];
-    const sa = m.score_a != null ? (typeof m.score_a === 'object' ? JSON.stringify(m.score_a) : m.score_a) : '—';
-    const sb = m.score_b != null ? (typeof m.score_b === 'object' ? JSON.stringify(m.score_b) : m.score_b) : '—';
+    const sportName = sportMap[m.sport_id]?.name;
+    const sa = formatScore(sportName, m.score_a);
+    const sb = formatScore(sportName, m.score_b);
     return `
     <tr>
       <td class="clickable" onclick="navigate('match-detail',{id:${m.id}})">${sportIcon(sportMap[m.sport_id]?.name)} ${sportMap[m.sport_id]?.name||'—'}</td>
@@ -1292,6 +1501,8 @@ async function renderMatches() {
           <select class="form-control" id="em-status">
             <option value="scheduled">Scheduled</option>
             <option value="in_progress">In Progress</option>
+            <option value="awaiting_confirmation">Awaiting Confirmation</option>
+            <option value="disputed">Disputed</option>
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
             <option value="postponed">Postponed</option>
@@ -1488,6 +1699,19 @@ async function renderMatchDetail() {
       <button class="btn btn-primary" onclick="logEvent(${id})">+ Log Event</button>
     </div>
   </div>
+  ${['awaiting_confirmation','disputed','completed'].includes(match.status) ? `
+  <div class="card" style="margin-top:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div style="font-weight:700">🤝 Captain Confirmations</div>
+      <div style="font-size:11px;color:var(--gray-500)">${match.status==='completed' ? 'Both sides confirmed.' : match.status==='disputed' ? 'A captain disputed — admin must resolve.' : 'Waiting on captain sign-off.'}</div>
+    </div>
+    <div id="confirmations-list" style="min-height:30px;color:#94a3b8;font-size:13px">Loading…</div>
+    ${match.status !== 'completed' && (isCaptainOf(match.team_a_id) || isCaptainOf(match.team_b_id)) ? `
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn btn-success" onclick="confirmMatchResult(${id})">✅ Confirm Score</button>
+        <button class="btn btn-danger" onclick="disputeMatchResult(${id})">⚠ Dispute Score</button>
+      </div>` : ''}
+  </div>` : ''}
   ${isAdmin() || (State.user?.role||'').toLowerCase()==='club_manager' ? `
   <div class="card" style="margin-top:20px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
@@ -1513,21 +1737,100 @@ async function renderMatchDetail() {
     `<button class="btn btn-secondary" onclick="closeModal('assign-modal')">Cancel</button>
      <button class="btn btn-primary" onclick="submitAssign()">Assign</button>`
   )}` : ''}
+  ${(sport?.name || '').toLowerCase() === 'cricket' ? `
+  <div class="card" style="margin-top:20px">
+    <div style="font-weight:700;font-size:15px;margin-bottom:12px">🎯 Bowling Figures</div>
+    <div id="md-bowling-figures" style="font-size:12px;color:#94a3b8">Loading…</div>
+  </div>` : ''}
   <div class="card" style="margin-top:20px;padding:0;overflow:hidden">
     <div style="padding:16px 20px;border-bottom:1px solid var(--gray-100);font-weight:700">📋 Match Events (${events.length})</div>
     <div class="table-wrap">
-      <table><thead><tr><th>Time</th><th>Type</th><th>Team</th><th>Data</th></tr></thead>
+      <table><thead><tr><th>Time</th><th>Type</th><th>Team</th><th>Player</th><th>Data</th></tr></thead>
       <tbody>${events.length ? events.map(e=>`
         <tr>
           <td style="font-size:12px;color:var(--gray-500)">${fmtDateTime(e.created_at)}</td>
           <td>${badge(e.event_type)}</td>
-          <td>${teamMap[e.team_id]?.name||'—'}</td>
+          <td>${e.team_name || teamMap[e.team_id]?.name||'—'}</td>
+          <td>${e.player_name || '—'}</td>
           <td style="font-size:12px;font-family:monospace">${e.event_data?JSON.stringify(e.event_data):''}</td>
         </tr>`).join('') :
-        '<tr><td colspan="4" style="text-align:center;padding:24px;color:#94a3b8">No events logged</td></tr>'}
+        '<tr><td colspan="5" style="text-align:center;padding:24px;color:#94a3b8">No events logged</td></tr>'}
       </tbody></table>
     </div>
   </div>`;
+}
+
+async function loadMatchConfirmations(matchId) {
+  const el = document.getElementById('confirmations-list');
+  if (!el || !matchId) return;
+  try {
+    const rows = await API.get(`/scoring/matches/${matchId}/confirmations`);
+    if (!rows.length) { el.innerHTML = '<em>No confirmations yet.</em>'; return; }
+    el.innerHTML = rows.map(c => {
+      const color = c.action === 'confirmed' ? '#16a34a' : '#dc2626';
+      const icon  = c.action === 'confirmed' ? '✅' : '⚠';
+      return `<div style="padding:6px 10px;border-radius:8px;background:#f8fafc;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">
+        <div><strong>${c.user_name||'—'}</strong> <span style="color:var(--gray-500);font-size:11px">· team ${c.team_side.toUpperCase()} · ${fmtDateTime(c.submitted_at)}</span></div>
+        <div style="color:${color};font-weight:700;font-size:12px">${icon} ${c.action}</div>
+      </div>${c.notes ? `<div style="font-size:11px;color:var(--gray-500);margin:-2px 0 6px 10px">"${c.notes}"</div>` : ''}`;
+    }).join('');
+  } catch (e) { el.innerHTML = `<span style="color:#dc2626">${e.message}</span>`; }
+}
+
+async function confirmMatchResult(matchId) {
+  try {
+    await API.post(`/scoring/matches/${matchId}/confirm`);
+    showAlert('Score confirmed.', 'success');
+    navigate('match-detail', { id: matchId });
+  } catch (e) { showAlert(e.message); }
+}
+
+async function disputeMatchResult(matchId) {
+  const notes = prompt('Reason for disputing the score? (optional)');
+  try {
+    await API.post(`/scoring/matches/${matchId}/dispute`, notes ? { notes } : {});
+    showAlert('Score disputed. Admin will review.', 'success');
+    navigate('match-detail', { id: matchId });
+  } catch (e) { showAlert(e.message); }
+}
+
+async function loadMatchBowlingFigures(matchId) {
+  const el = document.getElementById('md-bowling-figures');
+  if (!el || !matchId) return;
+  try {
+    // 1) Load events
+    const events = await API.get(`/matches/${matchId}/events`);
+    // Skip if no cricket-style events at all
+    const cricketEvents = events.filter(e => e.event_data && e.event_data.bowler_id);
+    if (!cricketEvents.length) {
+      el.innerHTML = '<em>No bowling figures recorded for this match.</em>';
+      return;
+    }
+    // 2) Build a name lookup from the events themselves where possible, and
+    //    fall back to a teams.members call for any bowler whose name is missing.
+    const nameById = {};
+    events.forEach(e => { if (e.player_id && e.player_name) nameById[e.player_id] = e.player_name; });
+    // Fetch both rosters if we have any unresolved bowler_ids
+    const unresolved = new Set();
+    cricketEvents.forEach(e => {
+      const bid = e.event_data.bowler_id;
+      if (bid && !nameById[bid]) unresolved.add(bid);
+    });
+    if (unresolved.size) {
+      // Resolve by hitting team_members for the two teams in the match
+      const m = await API.get(`/matches/${matchId}`);
+      const both = await Promise.all([
+        API.get(`/teams/${m.team_a_id}/members`).catch(() => []),
+        API.get(`/teams/${m.team_b_id}/members`).catch(() => []),
+      ]);
+      [...both[0], ...both[1]].forEach(p => {
+        if (p.player_id && p.player_name) nameById[p.player_id] = p.player_name;
+      });
+    }
+    el.innerHTML = _renderBowlingFigures(events, nameById);
+  } catch (e) {
+    el.innerHTML = `<span style="color:#dc2626">${e.message}</span>`;
+  }
 }
 
 async function loadMatchAssignments(matchId) {
@@ -2602,6 +2905,307 @@ async function confirmRecalculation() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+//  LEAGUES PAGE (Phase 4A — multi-sport competition wrappers)
+// ═══════════════════════════════════════════════════════════════════
+
+const _LEAGUE_STATUSES = ['draft','registration','in_progress','completed','cancelled'];
+
+async function renderLeagues() {
+  let leagues = [], clubs = [];
+  try {
+    [leagues, clubs] = await Promise.all([API.get('/leagues'), API.get('/clubs')]);
+  } catch(e) {}
+  const clubOptions = clubs.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+
+  const rows = leagues.map(l => `
+    <tr>
+      <td class="clickable" onclick="navigate('league-detail',{id:${l.id}})">
+        <strong>${l.name}</strong>
+        ${l.description ? `<div style="font-size:11px;color:var(--gray-500);margin-top:2px">${l.description}</div>` : ''}
+      </td>
+      <td>${l.organizer_name||'—'}</td>
+      <td>${l.sport_count} sport${l.sport_count===1?'':'s'}</td>
+      <td>${fmtDate(l.start_date)} → ${fmtDate(l.end_date)}</td>
+      <td>${badge(l.status)}</td>
+      <td>${l.venue||'—'}</td>
+      <td style="white-space:nowrap">
+        ${isAdmin() ? `<button class="btn btn-secondary btn-sm" onclick='openEditLeague(${JSON.stringify(l).replace(/'/g,"&#39;")})'>Edit</button>` : ''}
+        ${isAdmin() && l.status !== 'cancelled' ? `<button class="btn btn-danger btn-sm" onclick="cancelLeague(${l.id})">Cancel</button>` : ''}
+      </td>
+    </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;padding:32px;color:#94a3b8">No leagues yet</td></tr>';
+
+  return `
+  <div class="page-header">
+    <div><div class="page-title">🎖️ Leagues</div><div class="page-sub">${leagues.length} league${leagues.length===1?'':'s'}</div></div>
+    ${isAdmin() ? `<button class="btn btn-primary" onclick="openModal('add-league-modal')">+ New League</button>` : ''}
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+      <table><thead><tr><th>Name</th><th>Organiser</th><th>Sports</th><th>Dates</th><th>Status</th><th>Venue</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    </div>
+  </div>
+
+  ${modalHTML('add-league-modal','New League',`
+    <form id="add-league-form">
+      <div class="form-group"><label class="form-label">League Name</label><input class="form-control" id="al-name" required/></div>
+      <div class="form-group"><label class="form-label">Organising Club</label>
+        <select class="form-control" id="al-org" required>${clubOptions||'<option disabled>No clubs yet</option>'}</select>
+      </div>
+      <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="al-desc" rows="2"></textarea></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Start Date</label><input class="form-control" type="date" id="al-start"/></div>
+        <div class="form-group"><label class="form-label">End Date</label><input class="form-control" type="date" id="al-end"/></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Venue</label><input class="form-control" id="al-venue"/></div>
+        <div class="form-group"><label class="form-label">Max Teams / Sport</label><input class="form-control" type="number" id="al-max" value="16" min="2"/></div>
+      </div>
+    </form>`,
+    `<button class="btn btn-secondary" onclick="closeModal('add-league-modal')">Cancel</button>
+     <button class="btn btn-primary" onclick="submitAddLeague()">Create</button>`
+  )}
+  ${modalHTML('edit-league-modal','Edit League',`
+    <form id="edit-league-form">
+      <input type="hidden" id="el-id"/>
+      <div class="form-group"><label class="form-label">League Name</label><input class="form-control" id="el-name" required/></div>
+      <div class="form-group"><label class="form-label">Organising Club</label>
+        <select class="form-control" id="el-org" required>${clubOptions}</select>
+      </div>
+      <div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="el-desc" rows="2"></textarea></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Start Date</label><input class="form-control" type="date" id="el-start"/></div>
+        <div class="form-group"><label class="form-label">End Date</label><input class="form-control" type="date" id="el-end"/></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Venue</label><input class="form-control" id="el-venue"/></div>
+        <div class="form-group"><label class="form-label">Max Teams / Sport</label><input class="form-control" type="number" id="el-max" min="2"/></div>
+      </div>
+      <div class="form-group"><label class="form-label">Status</label>
+        <select class="form-control" id="el-status">
+          ${_LEAGUE_STATUSES.map(s => `<option value="${s}">${s.replace('_',' ')}</option>`).join('')}
+        </select>
+      </div>
+    </form>`,
+    `<button class="btn btn-secondary" onclick="closeModal('edit-league-modal')">Cancel</button>
+     <button class="btn btn-primary" onclick="submitEditLeague()">Save Changes</button>`
+  )}`;
+}
+
+async function submitAddLeague() {
+  try {
+    await API.post('/leagues', {
+      name:                 document.getElementById('al-name').value,
+      organizer_id:         parseInt(document.getElementById('al-org').value),
+      description:          document.getElementById('al-desc').value || null,
+      start_date:           document.getElementById('al-start').value || null,
+      end_date:             document.getElementById('al-end').value || null,
+      venue:                document.getElementById('al-venue').value || null,
+      max_teams_per_sport:  parseInt(document.getElementById('al-max').value) || 16,
+    });
+    closeModal('add-league-modal');
+    showAlert('League created!', 'success');
+    navigate('leagues');
+  } catch(e) { showAlert(e.message); }
+}
+
+function openEditLeague(l) {
+  document.getElementById('el-id').value     = l.id;
+  document.getElementById('el-name').value   = l.name || '';
+  document.getElementById('el-org').value    = l.organizer_id || '';
+  document.getElementById('el-desc').value   = l.description || '';
+  document.getElementById('el-start').value  = l.start_date || '';
+  document.getElementById('el-end').value    = l.end_date || '';
+  document.getElementById('el-venue').value  = l.venue || '';
+  document.getElementById('el-max').value    = l.max_teams_per_sport || 16;
+  document.getElementById('el-status').value = l.status || 'draft';
+  openModal('edit-league-modal');
+}
+
+async function submitEditLeague() {
+  const id = document.getElementById('el-id').value;
+  try {
+    await API.patch(`/leagues/${id}`, {
+      name:                 document.getElementById('el-name').value,
+      organizer_id:         parseInt(document.getElementById('el-org').value),
+      description:          document.getElementById('el-desc').value || null,
+      start_date:           document.getElementById('el-start').value || null,
+      end_date:             document.getElementById('el-end').value || null,
+      venue:                document.getElementById('el-venue').value || null,
+      max_teams_per_sport:  parseInt(document.getElementById('el-max').value),
+      status:               document.getElementById('el-status').value,
+    });
+    closeModal('edit-league-modal');
+    showAlert('League updated!', 'success');
+    navigate('leagues');
+  } catch(e) { showAlert(e.message); }
+}
+
+async function cancelLeague(id) {
+  if (!confirm('Cancel this league? Its status will be set to cancelled.')) return;
+  try {
+    await API.delete(`/leagues/${id}`);
+    showAlert('League cancelled.', 'success');
+    navigate('leagues');
+  } catch(e) { showAlert(e.message); }
+}
+
+
+// ─── League Detail ──────────────────────────────────────────────────
+
+async function renderLeagueDetail() {
+  const id = State.pageParams?.id;
+  let league = {}, ls = [], sports = [];
+  try {
+    [league, ls, sports] = await Promise.all([
+      API.get(`/leagues/${id}`),
+      API.get(`/leagues/${id}/sports`),
+      API.get('/sports'),
+    ]);
+  } catch(e) { return `<div class="alert alert-error">${e.message}</div>`; }
+
+  const linkedIds = new Set(ls.map(x => x.sport_id));
+  const availSports = sports.filter(s => !linkedIds.has(s.id));
+  const sportOptions = availSports.map(s => `<option value="${s.id}">${sportIcon(s.name)} ${s.name}</option>`).join('');
+
+  const sportRows = ls.map(x => `
+    <tr>
+      <td class="clickable" onclick="navigate('tournament-detail',{id:${x.tournament_id}})">
+        <strong>${sportIcon(x.sport_name)} ${x.sport_name||'—'}</strong>
+      </td>
+      <td>${badge(x.tournament_status||'—')}</td>
+      <td>${x.registered_teams||0}</td>
+      <td>${isAdmin() ? `<button class="btn btn-danger btn-sm" onclick="removeLeagueSport(${id},${x.sport_id})">Remove</button>` : ''}</td>
+    </tr>`).join('') || '<tr><td colspan="4" style="text-align:center;padding:24px;color:#94a3b8">No sports added yet</td></tr>';
+
+  return `
+  <div style="margin-bottom:16px">
+    <button class="btn btn-secondary btn-sm" onclick="navigate('leagues')">← Back to Leagues</button>
+  </div>
+  <div class="page-header">
+    <div>
+      <div class="page-title">🎖️ ${league.name||'—'}</div>
+      <div class="page-sub">${league.organizer_name||'—'} · ${fmtDate(league.start_date)} → ${fmtDate(league.end_date)} · ${league.venue||'No venue'}</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">${badge(league.status)}</div>
+  </div>
+  ${league.description ? `<div class="card" style="margin-bottom:16px">${league.description}</div>` : ''}
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div style="font-weight:700;font-size:15px">🏅 Sports in this League</div>
+    ${isAdmin() && availSports.length ? `<button class="btn btn-primary btn-sm" onclick="openModal('add-league-sport-modal')">+ Add Sport</button>` : ''}
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+      <table><thead><tr><th>Sport</th><th>Tournament Status</th><th>Registered Teams</th><th></th></tr></thead>
+      <tbody>${sportRows}</tbody></table>
+    </div>
+  </div>
+
+  <div style="font-weight:700;font-size:15px;margin:20px 0 12px">📊 Standings</div>
+  <div id="league-standings"><div style="color:#94a3b8;padding:24px;text-align:center">Loading…</div></div>
+
+  ${modalHTML('add-league-sport-modal','Add Sport to League',`
+    <div class="form-group"><label class="form-label">Sport</label>
+      <select class="form-control" id="als-sport">${sportOptions||'<option disabled>All available sports already added</option>'}</select>
+    </div>
+    <div class="form-group"><label class="form-label">Format</label>
+      <select class="form-control" id="als-bracket">
+        <option value="round_robin" selected>Round Robin</option>
+        <option value="single_elimination">Single Elimination</option>
+        <option value="double_elimination">Double Elimination</option>
+        <option value="swiss">Swiss</option>
+      </select>
+    </div>
+    <div style="font-size:12px;color:var(--gray-500);margin-top:6px">
+      Adding a sport creates a tournament under it (auto-named "${(league.name||'').replace(/"/g,'')} — &lt;sport&gt;"), open for registration.
+    </div>`,
+    `<button class="btn btn-secondary" onclick="closeModal('add-league-sport-modal')">Cancel</button>
+     <button class="btn btn-primary" onclick="submitAddLeagueSport(${id})">Add</button>`
+  )}`;
+}
+
+async function submitAddLeagueSport(leagueId) {
+  const sportId = parseInt(document.getElementById('als-sport').value);
+  if (!sportId) { showAlert('Pick a sport'); return; }
+  try {
+    await API.post(`/leagues/${leagueId}/sports`, {
+      sport_id: sportId,
+      bracket_type: document.getElementById('als-bracket').value,
+    });
+    closeModal('add-league-sport-modal');
+    showAlert('Sport added to league.', 'success');
+    navigate('league-detail', { id: leagueId });
+  } catch(e) { showAlert(e.message); }
+}
+
+async function loadLeagueStandings(leagueId) {
+  const el = document.getElementById('league-standings');
+  if (!el || !leagueId) return;
+  try {
+    const data = await API.get(`/leagues/${leagueId}/standings`);
+    if (!data.per_sport.length) {
+      el.innerHTML = '<div class="card" style="color:#94a3b8;text-align:center;padding:24px">No sports configured yet.</div>';
+      return;
+    }
+    const anyMatches = data.per_sport.some(s => s.standings.some(t => t.played > 0));
+    if (!anyMatches) {
+      el.innerHTML = '<div class="card" style="color:#94a3b8;text-align:center;padding:24px">No completed matches yet — standings will appear once matches are confirmed.</div>';
+      return;
+    }
+    // Aggregate club leaderboard
+    const aggRows = data.aggregate.map(c => `
+      <tr>
+        <td>${rankMedal(c.rank)}</td>
+        <td><strong>${c.club_name||'—'}</strong></td>
+        <td>${c.played}</td>
+        <td>${c.wins}</td>
+        <td>${c.draws}</td>
+        <td>${c.losses}</td>
+      </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;padding:16px;color:#94a3b8">No clubs ranked yet</td></tr>';
+
+    const sportBlocks = data.per_sport.map(s => `
+      <div class="card" style="margin-top:14px;padding:0;overflow:hidden">
+        <div style="padding:12px 16px;border-bottom:1px solid var(--gray-100);font-weight:700">${s.sport_icon||sportIcon(s.sport_name)} ${s.sport_name||'—'}</div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>#</th><th>Team</th><th>Club</th><th>P</th><th>W</th><th>D</th><th>L</th></tr></thead>
+          <tbody>${s.standings.length ? s.standings.map(t => `
+            <tr>
+              <td>${rankMedal(t.rank)}</td>
+              <td><strong>${t.name}</strong></td>
+              <td>${t.club_name||'—'}</td>
+              <td>${t.played}</td>
+              <td>${t.wins}</td>
+              <td>${t.draws}</td>
+              <td>${t.losses}</td>
+            </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;padding:12px;color:#94a3b8">No teams registered yet</td></tr>'}
+          </tbody>
+        </table></div>
+      </div>`).join('');
+
+    el.innerHTML = `
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="padding:12px 16px;border-bottom:1px solid var(--gray-100);font-weight:700">🏆 League Aggregate (by club)</div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>#</th><th>Club</th><th>Played</th><th>Wins</th><th>Draws</th><th>Losses</th></tr></thead>
+          <tbody>${aggRows}</tbody>
+        </table></div>
+      </div>
+      ${sportBlocks}`;
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${e.message}</div>`; }
+}
+
+async function removeLeagueSport(leagueId, sportId) {
+  if (!confirm('Remove this sport from the league? The backing tournament will be cancelled.')) return;
+  try {
+    await API.delete(`/leagues/${leagueId}/sports/${sportId}`);
+    showAlert('Sport removed.', 'success');
+    navigate('league-detail', { id: leagueId });
+  } catch(e) { showAlert(e.message); }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
 //  SCORING PAGE (mobile-friendly score entry for score keepers)
 // ═══════════════════════════════════════════════════════════════════
 
@@ -2609,8 +3213,52 @@ function _scoreNum(v) {
   if (v == null) return 0;
   if (typeof v === 'number') return v;
   if (typeof v === 'string') { const n = parseInt(v); return isNaN(n) ? 0 : n; }
-  if (typeof v === 'object') return v.total ?? v.points ?? v.value ?? 0;
+  if (typeof v === 'object') return v.total ?? v.points ?? v.value ?? v.runs ?? 0;
   return 0;
+}
+
+/**
+ * Phase 6: render a score for display, sport-aware.
+ * Falls back to a single integer if the score shape isn't recognised.
+ */
+function formatScore(sportName, score) {
+  if (score == null) return '—';
+  const sport = (sportName || '').toLowerCase();
+  if (typeof score === 'object') {
+    if (sport === 'cricket' && 'runs' in score) {
+      const runs = score.runs ?? 0;
+      const wkts = score.wickets ?? 0;
+      const ov   = score.overs   ?? 0;
+      const balls = score.balls  ?? 0;
+      const overStr = balls > 0 ? `${ov}.${balls}` : `${ov}`;
+      return `${runs}/${wkts} (${overStr})`;
+    }
+    if (sport === 'tennis' && 'sets' in score) {
+      const hist = (score.set_history || []).map(s => s[0]).join('-');
+      const cur  = score.games != null ? ` (${score.games}${score.points && score.points !== '0' ? '/'+score.points : ''})` : '';
+      return `${score.sets} sets${hist ? ' ['+hist+']' : ''}${cur}`;
+    }
+    if (['badminton','table tennis','pickleball'].includes(sport) && 'games' in score) {
+      const hist = (score.game_history || []).join('-');
+      const cur  = score.points != null ? ` (${score.points})` : '';
+      return `${score.games} games${hist ? ' ['+hist+']' : ''}${cur}`;
+    }
+    if (['snooker','billiards','darts','carrom'].includes(sport) && 'frames' in score) {
+      const noun = sport === 'darts' ? 'leg' : (sport === 'carrom' ? 'board' : 'frame');
+      const n = score.frames;
+      return `${n} ${noun}${n === 1 ? '' : 's'}`;
+    }
+    if ('total' in score)  return String(score.total);
+    if ('points' in score) return String(score.points);
+    if ('value' in score)  return String(score.value);
+    return JSON.stringify(score);
+  }
+  if (sportName === 'Chess') {
+    if (score === 1)   return '1';
+    if (score === 0.5) return '½';
+    if (score === 0)   return '0';
+  }
+  return String(score);
 }
 
 async function renderScoring() {
@@ -2644,7 +3292,7 @@ async function renderScoring() {
           <div style="font-size:12px;color:var(--gray-500)">${m.venue||'No venue'} · ${fmtDateTime(m.scheduled_at)}</div>
         </div>
         <div style="text-align:right">
-          <div style="font-family:monospace;font-weight:800;font-size:24px;line-height:1">${_scoreNum(m.score_a)} : ${_scoreNum(m.score_b)}</div>
+          <div style="font-family:monospace;font-weight:800;font-size:20px;line-height:1">${formatScore(m.sport_name, m.score_a)} : ${formatScore(m.sport_name, m.score_b)}</div>
           <div style="margin-top:6px">${badge(m.status)}</div>
         </div>
       </div>
@@ -2671,93 +3319,760 @@ async function renderScoring() {
 }
 
 
-// ── Kiosk-style single-match scoring view ──────────────────────────────
+// ── Kiosk-style single-match scoring view (sport-aware dispatcher) ──
 
 async function renderScoringMatch() {
   const id = State.pageParams?.id;
   if (!id) return '<div class="alert alert-error">No match selected</div>';
 
-  let m;
-  try { m = await API.get(`/scoring/matches/${id}`); }
-  catch (e) { return `<div class="alert alert-error">${e.message}</div>`; }
+  let m, rosters = { a: [], b: [] };
+  try {
+    [m, rosters] = await Promise.all([
+      API.get(`/scoring/matches/${id}`),
+      API.get(`/scoring/matches/${id}/roster`).catch(() => ({ a: [], b: [] })),
+    ]);
+  } catch (e) { return `<div class="alert alert-error">${e.message}</div>`; }
 
+  // Cache team IDs, rosters, and current scores in State for sport-specific widgets to mutate.
+  State.kioskScore = {
+    matchId: id,
+    teamA: m.team_a_id, teamB: m.team_b_id,
+    sport: m.sport_name,
+    a: m.score_a, b: m.score_b,
+    rosterA: rosters.a || [], rosterB: rosters.b || [],
+    currentPlayerA: null, currentPlayerB: null,
+    // Cricket: bowler against team A (i.e. from team B's roster), and vice versa
+    currentBowlerVsA: null, currentBowlerVsB: null,
+  };
+
+  const header = `
+    <div style="margin-bottom:14px">
+      <button class="btn btn-secondary btn-sm" onclick="navigate('scoring')">← Back</button>
+    </div>
+    <div class="card" style="text-align:center">
+      <div style="font-size:13px;color:var(--gray-500)">${m.sport_icon||sportIcon(m.sport_name)} ${m.sport_name||'—'} · ${m.venue||'No venue'}</div>
+      <div style="margin-top:4px">${badge(m.status)}</div>
+    </div>
+    <div id="kiosk-status" style="text-align:center;font-size:12px;color:var(--gray-500);margin:8px 0;min-height:16px"></div>`;
+
+  const footer = `
+    <div style="display:flex;gap:8px;justify-content:center;margin-top:18px">
+      ${m.status === 'completed'
+        ? `<div style="color:var(--gray-500);font-size:13px">Match finalized.</div>`
+        : `<button class="btn btn-success" style="padding:14px 28px;font-size:15px" onclick="kioskFinalize(${id})">✅ Finalize Match</button>`}
+    </div>`;
+
+  const sport = (m.sport_name || '').toLowerCase();
+  const supportsAttribution = !['chess','tug of war','swimming','rowing','archery'].includes(sport);
+
+  let body;
+  if (sport === 'cricket')                       body = _renderKioskCricket(m);
+  else if (sport === 'chess')                    body = _renderKioskChess(m);
+  else if (sport === 'tug of war')               body = _renderKioskBinary(m);
+  else if (sport === 'tennis')                   body = _renderKioskTennis(m);
+  else if (sport === 'badminton')                body = _renderKioskRacket(m, 21);
+  else if (sport === 'table tennis')             body = _renderKioskRacket(m, 11);
+  else if (sport === 'pickleball')               body = _renderKioskRacket(m, 11);
+  else if (sport === 'snooker')                  body = _renderKioskFrame(m, 'frame');
+  else if (sport === 'billiards')                body = _renderKioskFrame(m, 'frame');
+  else if (sport === 'darts')                    body = _renderKioskFrame(m, 'leg');
+  else if (sport === 'carrom')                   body = _renderKioskFrame(m, 'board');
+  else if (sport === 'swimming')                 body = _renderKioskTimed(m, { lowerIsBetter: true, unit: 'seconds', label: 'Time' });
+  else if (sport === 'rowing')                   body = _renderKioskTimed(m, { lowerIsBetter: true, unit: 'seconds', label: 'Time' });
+  else if (sport === 'archery')                  body = _renderKioskTimed(m, { lowerIsBetter: false, unit: 'points', label: 'Score' });
+  else                                           body = _renderKioskGeneric(m);
+
+  const eventsFeed = supportsAttribution
+    ? `<div class="card" style="margin-top:14px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">📜 Recent events <span style="font-weight:400;color:var(--gray-500);font-size:11px">(tap ✕ to undo)</span></div>
+        <div id="kiosk-events" style="font-size:12px;color:#94a3b8">Loading…</div>
+      </div>` : '';
+
+  const bowlingFigures = sport === 'cricket'
+    ? `<div class="card" style="margin-top:14px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">🎯 Bowling Figures</div>
+        <div id="kiosk-bowling" style="font-size:12px;color:#94a3b8">Loading…</div>
+      </div>` : '';
+
+  return header + body + eventsFeed + bowlingFigures + footer;
+}
+
+// Compute bowling figures from the events list and render them grouped by bowler.
+// `nameLookup` is an optional {id -> name} map; if omitted, the function falls
+// back to State.kioskScore rosters (kiosk use case).
+function _renderBowlingFigures(events, nameLookup) {
+  // Build a name lookup. Prefer the passed-in lookup; fall back to kiosk rosters
+  // for the in-kiosk caller; finally use whatever the events already include.
+  const nameById = nameLookup ? { ...nameLookup } : {};
+  if (!nameLookup) {
+    (State.kioskScore?.rosterA || []).forEach(p => { nameById[p.id] = p.name; });
+    (State.kioskScore?.rosterB || []).forEach(p => { nameById[p.id] = p.name; });
+  }
+
+  const byBowler = {};   // bowler_id -> {balls, runs, wickets}
+  events.forEach(e => {
+    const bid = e.event_data && e.event_data.bowler_id;
+    if (!bid) return;
+    const b = byBowler[bid] || { balls: 0, runs: 0, wickets: 0 };
+    const t = e.event_type;
+    const v = (e.event_data && typeof e.event_data.value === 'number') ? e.event_data.value : 0;
+
+    if (t === 'wide' || t === 'no_ball') {
+      // Illegal delivery: bowler conceded the run but it doesn't count as a ball bowled
+      b.runs += v;
+    } else if (t === 'bye' || t === 'leg_bye') {
+      // Legal delivery; runs are NOT credited to the bowler
+      b.balls += 1;
+    } else {
+      // Standard run / dot / wicket
+      b.balls += 1;
+      if (t === 'wicket') b.wickets += 1;
+      else b.runs += v;
+    }
+    byBowler[bid] = b;
+  });
+
+  const rows = Object.entries(byBowler).map(([id, b]) => {
+    const overs = `${Math.floor(b.balls / 6)}.${b.balls % 6}`;
+    return { id: parseInt(id), name: nameById[id] || `Player #${id}`, overs, ...b };
+  }).sort((x, y) => (y.wickets - x.wickets) || (x.runs - y.runs));
+
+  if (!rows.length) return '<em style="color:#94a3b8">No bowler attributed yet. Pick a bowler before tapping run/wicket buttons.</em>';
+
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Bowler</th><th>O</th><th>R</th><th>W</th><th>Econ</th></tr></thead>
+    <tbody>${rows.map(r => `
+      <tr>
+        <td><strong>${r.name}</strong></td>
+        <td>${r.overs}</td>
+        <td>${r.runs}</td>
+        <td>${r.wickets}</td>
+        <td>${r.balls > 0 ? (r.runs / (r.balls / 6)).toFixed(2) : '—'}</td>
+      </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+// Build the small "Scoring as: …" selector for a team in attribution-aware widgets.
+// `label` defaults to "Scoring as" but can be overridden ("Batter", "Bowler", etc.).
+// `rosterSide` chooses which roster to pull from (defaults to `side`).
+function _playerSelector(side, opts = {}) {
+  const label      = opts.label || 'Scoring as';
+  const rosterSide = opts.rosterSide || side;
+  const stateKey   = opts.stateKey || (side === 'a' ? 'currentPlayerA' : 'currentPlayerB');
+  const roster = rosterSide === 'a' ? State.kioskScore.rosterA : State.kioskScore.rosterB;
+  if (!roster || !roster.length) {
+    return `<div style="font-size:11px;color:var(--gray-500);text-align:center;margin-bottom:6px">No ${label.toLowerCase()} roster.</div>`;
+  }
+  return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:6px;justify-content:center">
+    <span style="color:var(--gray-500);min-width:50px;text-align:right">${label}:</span>
+    <select class="form-control" style="width:auto;font-size:12px;padding:4px 8px" onchange="kioskSetPlayerKey('${stateKey}', this.value)">
+      <option value="">— pick —</option>
+      ${roster.map(p => `<option value="${p.id}">${p.name}${p.jersey_no ? ' #'+p.jersey_no : ''}</option>`).join('')}
+    </select>
+  </div>`;
+}
+
+function kioskSetPlayerKey(key, value) {
+  State.kioskScore[key] = value ? parseInt(value) : null;
+}
+// Back-compat shim for the older single-selector signature still used by the generic widget
+function kioskSetPlayer(side, playerId) {
+  kioskSetPlayerKey(side === 'a' ? 'currentPlayerA' : 'currentPlayerB', playerId);
+}
+function _currentPlayer(side) {
+  return side === 'a' ? State.kioskScore.currentPlayerA : State.kioskScore.currentPlayerB;
+}
+function _currentBowlerAgainst(side) {
+  // Bowler "against side A" comes from team B's roster (and vice versa)
+  return side === 'a' ? State.kioskScore.currentBowlerVsA : State.kioskScore.currentBowlerVsB;
+}
+
+// Fire an event row in the background. Reloads the events feed on success/failure.
+// `extra` is merged into event_data (e.g. {bowler_id: 12} for cricket).
+async function _kioskLogEvent(side, event_type, value, extra) {
+  const matchId = State.kioskScore.matchId;
+  if (!matchId) return;
+  try {
+    await API.post(`/scoring/matches/${matchId}/events`, {
+      team_side: side,
+      player_id: _currentPlayer(side),
+      event_type,
+      value,
+      extra: extra || null,
+    });
+    loadKioskEvents();
+  } catch (e) {
+    _kioskSetStatus('⚠ Event: ' + e.message);
+  }
+}
+
+async function loadKioskEvents() {
+  const el = document.getElementById('kiosk-events');
+  if (!el) return;
+  const matchId = State.kioskScore.matchId;
+  try {
+    const events = await API.get(`/scoring/matches/${matchId}/events`);
+    // Build name lookup for bowlers across both rosters
+    const nameById = {};
+    (State.kioskScore.rosterA || []).forEach(p => { nameById[p.id] = p.name; });
+    (State.kioskScore.rosterB || []).forEach(p => { nameById[p.id] = p.name; });
+
+    if (!events.length) { el.innerHTML = '<em style="color:#94a3b8">No events logged.</em>'; }
+    else {
+      const top = events.slice(0, 10);
+      el.innerHTML = top.map(e => {
+        const val = (e.event_data && e.event_data.value != null) ? `+${e.event_data.value}` : '';
+        const tName = e.team_name || '—';
+        const pName = e.player_name || '—';
+        const bowler = e.event_data && e.event_data.bowler_id
+          ? `<span style="color:var(--gray-500);font-size:11px"> by ${nameById[e.event_data.bowler_id] || ('#'+e.event_data.bowler_id)}</span>` : '';
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 6px;border-bottom:1px solid var(--gray-100)">
+          <span><strong>${tName}</strong> · ${pName} · <span style="color:var(--brand);font-weight:700">${e.event_type}${val ? ' '+val : ''}</span>${bowler}</span>
+          <button title="Undo this event" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px" onclick="undoKioskEvent(${e.id}, '${e.event_type}', ${e.event_data?.value ?? 'null'}, '${e.team_id === State.kioskScore.teamA ? 'a' : 'b'}')">✕</button>
+        </div>`;
+      }).join('');
+    }
+
+    // Cricket: refresh bowling figures from the same events payload
+    const bowlEl = document.getElementById('kiosk-bowling');
+    if (bowlEl) bowlEl.innerHTML = _renderBowlingFigures(events);
+  } catch (err) {
+    el.innerHTML = `<span style="color:#dc2626">${err.message}</span>`;
+  }
+}
+
+// Delete an event and roll back the team's stored score by the same delta.
+async function undoKioskEvent(eventId, eventType, value, side) {
+  const matchId = State.kioskScore.matchId;
+  try {
+    await API.delete(`/scoring/matches/${matchId}/events/${eventId}`);
+    // Roll back the kiosk-local score by the event's contribution
+    const sport = (State.kioskScore.sport || '').toLowerCase();
+    if (sport === 'cricket' && typeof State.kioskScore[side] === 'object') {
+      const st = { ...State.kioskScore[side] };
+      if (eventType === 'wicket') st.wickets = Math.max(0, (st.wickets||0) - 1);
+      else if (typeof value === 'number') st.runs = Math.max(0, (st.runs||0) - value);
+      // Best-effort ball rewind too
+      if (st.balls > 0) st.balls -= 1;
+      else if (st.overs > 0) { st.overs -= 1; st.balls = 5; }
+      st.total = st.runs;
+      State.kioskScore[side] = st;
+    } else if (typeof value === 'number') {
+      const cur = _scoreNum(State.kioskScore[side]);
+      State.kioskScore[side] = Math.max(0, cur - value);
+    }
+    await _kioskSaveNow();
+    // Re-render to refresh widget values + event feed
+    navigate('scoring-match', { id: matchId });
+  } catch (e) {
+    _kioskSetStatus('⚠ Undo: ' + e.message);
+  }
+}
+
+// ── Generic single-integer widget (football, basketball, volleyball, foosball,
+//    and all sports that don't have a specific widget yet) ─────────────────
+
+function _renderKioskGeneric(m) {
   const sa = _scoreNum(m.score_a);
   const sb = _scoreNum(m.score_b);
-  const canFinalize = sa !== 0 || sb !== 0;  // soft guard; backend enforces real check
-
+  // Default event type by sport (used when attribution is on)
+  const sport = (m.sport_name || '').toLowerCase();
+  const eventTypeFor = ({football:'goal', basketball:'point', volleyball:'point', foosball:'goal'})[sport] || 'point';
   return `
-  <div style="margin-bottom:14px">
-    <button class="btn btn-secondary btn-sm" onclick="navigate('scoring')">← Back</button>
-  </div>
-  <div class="card" style="text-align:center">
-    <div style="font-size:13px;color:var(--gray-500)">${m.sport_icon||sportIcon(m.sport_name)} ${m.sport_name||'—'} · ${m.venue||'No venue'}</div>
-    <div style="margin-top:4px">${badge(m.status)}</div>
-  </div>
   <div class="kiosk-grid">
     <div class="kiosk-team">
       <div class="kiosk-team-name">${m.team_a_name||'Team A'}</div>
+      ${_playerSelector('a')}
       <div class="kiosk-score" id="ks-a">${sa}</div>
       <div class="kiosk-btns">
-        <button class="kiosk-btn kiosk-minus" onclick="kioskAdjust(${id},'a',-1)">−</button>
-        <button class="kiosk-btn kiosk-plus"  onclick="kioskAdjust(${id},'a',+1)">+</button>
+        <button class="kiosk-btn kiosk-minus" onclick="kioskAdjustGeneric('a',-1,'${eventTypeFor}')">−</button>
+        <button class="kiosk-btn kiosk-plus"  onclick="kioskAdjustGeneric('a',+1,'${eventTypeFor}')">+</button>
       </div>
     </div>
     <div class="kiosk-vs">VS</div>
     <div class="kiosk-team">
       <div class="kiosk-team-name">${m.team_b_name||'Team B'}</div>
+      ${_playerSelector('b')}
       <div class="kiosk-score" id="ks-b">${sb}</div>
       <div class="kiosk-btns">
-        <button class="kiosk-btn kiosk-minus" onclick="kioskAdjust(${id},'b',-1)">−</button>
-        <button class="kiosk-btn kiosk-plus"  onclick="kioskAdjust(${id},'b',+1)">+</button>
+        <button class="kiosk-btn kiosk-minus" onclick="kioskAdjustGeneric('b',-1,'${eventTypeFor}')">−</button>
+        <button class="kiosk-btn kiosk-plus"  onclick="kioskAdjustGeneric('b',+1,'${eventTypeFor}')">+</button>
       </div>
     </div>
-  </div>
-  <div id="kiosk-status" style="text-align:center;font-size:12px;color:var(--gray-500);margin:8px 0;min-height:16px"></div>
-  <div style="display:flex;gap:8px;justify-content:center;margin-top:18px">
-    ${m.status !== 'completed'
-      ? `<button class="btn btn-success" style="padding:14px 28px;font-size:15px" onclick="kioskFinalize(${id})">✅ Finalize Match</button>`
-      : `<div style="color:var(--gray-500);font-size:13px">Match finalized.</div>`}
   </div>`;
 }
 
-// In-memory state for the current kiosk view (avoids re-fetching after every tap).
-State.kioskScore = { a: 0, b: 0, matchId: null };
-
-async function _kioskInitState(matchId) {
-  if (State.kioskScore.matchId === matchId) return;
-  State.kioskScore.matchId = matchId;
-  State.kioskScore.a = parseInt(document.getElementById('ks-a').textContent) || 0;
-  State.kioskScore.b = parseInt(document.getElementById('ks-b').textContent) || 0;
+function kioskAdjustGeneric(side, delta, eventType) {
+  const cur = _scoreNum(State.kioskScore[side]);
+  const next = Math.max(0, cur + delta);
+  State.kioskScore[side] = next;
+  document.getElementById('ks-' + side).textContent = next;
+  _kioskSaveDebounced();
+  if (delta > 0) _kioskLogEvent(side, eventType || 'point', delta);
+  // Negative deltas don't log a "negative" event — they're treated as score corrections.
+  // Use the events feed ✕ button to properly undo a logged event.
 }
 
-async function kioskAdjust(matchId, side, delta) {
-  await _kioskInitState(matchId);
-  State.kioskScore[side] = Math.max(0, State.kioskScore[side] + delta);
-  document.getElementById('ks-' + side).textContent = State.kioskScore[side];
+// ── Cricket widget ────────────────────────────────────────────────────────
 
-  // Debounce server save
-  clearTimeout(State.kioskScore._timer);
-  _kioskSetStatus('Saving…');
-  State.kioskScore._timer = setTimeout(async () => {
-    try {
-      const sa = State.kioskScore.a, sb = State.kioskScore.b;
-      const winner_id = await _kioskWinnerId(matchId, sa, sb);
-      await API.patch(`/scoring/matches/${matchId}/score`, { score_a: sa, score_b: sb, winner_id });
-      _kioskSetStatus('✓ Saved');
-      setTimeout(() => _kioskSetStatus(''), 1500);
-    } catch (e) { _kioskSetStatus('⚠ ' + e.message); }
-  }, 600);
-}
-
-async function _kioskWinnerId(matchId, sa, sb) {
-  if (sa === sb) return null;
-  // Match payload from the current fetch is gone; pull a tiny lookup instead.
-  // Cheaper: cache the team ids on the page once we render.
-  if (!State.kioskScore._teamIds) {
-    const m = await API.get(`/scoring/matches/${matchId}`);
-    State.kioskScore._teamIds = { a: m.team_a_id, b: m.team_b_id };
+function _cricketState(side) {
+  const s = State.kioskScore[side];
+  if (s && typeof s === 'object' && 'runs' in s) {
+    return { runs: s.runs||0, wickets: s.wickets||0, overs: s.overs||0, balls: s.balls||0 };
   }
-  return sa > sb ? State.kioskScore._teamIds.a : State.kioskScore._teamIds.b;
+  return { runs: 0, wickets: 0, overs: 0, balls: 0 };
+}
+
+function _renderKioskCricket(m) {
+  const a = _cricketState('a'), b = _cricketState('b');
+  const cardFor = (side, name, st) => {
+    const otherSide   = side === 'a' ? 'b' : 'a';
+    const batterKey   = side === 'a' ? 'currentPlayerA' : 'currentPlayerB';
+    const bowlerKey   = side === 'a' ? 'currentBowlerVsA' : 'currentBowlerVsB';
+    return `
+    <div class="kiosk-team" style="text-align:left">
+      <div class="kiosk-team-name" style="text-align:center">${name}</div>
+      ${_playerSelector(side, {label:'Batter', rosterSide: side,        stateKey: batterKey})}
+      ${_playerSelector(side, {label:'Bowler', rosterSide: otherSide,   stateKey: bowlerKey})}
+      <div style="text-align:center;font-family:monospace;font-weight:800;font-size:32px;color:var(--brand);margin:6px 0">
+        <span id="cr-${side}-runs">${st.runs}</span>/<span id="cr-${side}-wkts">${st.wickets}</span>
+        <span style="font-size:18px;color:var(--gray-500);font-weight:600"> (<span id="cr-${side}-over">${st.overs}</span>.<span id="cr-${side}-balls">${st.balls}</span>)</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+        ${[0,1,2,3,4,6].map(r => `<button class="kiosk-btn kiosk-plus" style="height:48px;font-size:18px" onclick="cricketRun('${side}',${r})">${r===0?'•':'+'+r}</button>`).join('')}
+        <button class="kiosk-btn kiosk-minus" style="height:48px;font-size:14px" onclick="cricketWicket('${side}')">W</button>
+        <button class="kiosk-btn" style="height:48px;background:#fde68a;color:#78350f;border:none;font-weight:700" onclick="cricketUndoBall('${side}')">⤺</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px">
+        <button class="kiosk-btn" style="height:38px;font-size:12px;background:#e0e7ff;color:#3730a3;border:none;font-weight:700" onclick="cricketExtra('${side}','wide')">Wd</button>
+        <button class="kiosk-btn" style="height:38px;font-size:12px;background:#e0e7ff;color:#3730a3;border:none;font-weight:700" onclick="cricketExtra('${side}','no_ball')">Nb</button>
+        <button class="kiosk-btn" style="height:38px;font-size:12px;background:#d1fae5;color:#065f46;border:none;font-weight:700" onclick="cricketExtra('${side}','bye')">B</button>
+        <button class="kiosk-btn" style="height:38px;font-size:12px;background:#d1fae5;color:#065f46;border:none;font-weight:700" onclick="cricketExtra('${side}','leg_bye')">LB</button>
+      </div>
+      <div style="font-size:11px;color:var(--gray-500);text-align:center;margin-top:6px">
+        Wd/Nb: +1 run, no ball bowled (illegal delivery). B/LB: +1 run, +1 ball (bowler not charged). Tap multiple times for multi-run extras.
+      </div>
+    </div>`;
+  };
+  return `<div class="kiosk-grid">
+    ${cardFor('a', m.team_a_name||'Team A', a)}
+    <div class="kiosk-vs">VS</div>
+    ${cardFor('b', m.team_b_name||'Team B', b)}
+  </div>`;
+}
+
+function _cricketSet(side, st) {
+  // store with `total: runs` so the rating engine's _coerce_score picks up runs as the number
+  State.kioskScore[side] = { ...st, total: st.runs };
+  document.getElementById(`cr-${side}-runs`).textContent  = st.runs;
+  document.getElementById(`cr-${side}-wkts`).textContent  = st.wickets;
+  document.getElementById(`cr-${side}-over`).textContent  = st.overs;
+  document.getElementById(`cr-${side}-balls`).textContent = st.balls;
+}
+
+function _cricketAdvanceBall(st) {
+  // Phase 6 MVP: every legal-delivery button advances 1 ball. Wides/no-balls are
+  // captured via the existing Match Events flow rather than complicating the kiosk.
+  st.balls += 1;
+  if (st.balls >= 6) { st.balls = 0; st.overs += 1; }
+}
+
+function cricketRun(side, runs) {
+  const st = _cricketState(side);
+  st.runs += runs;
+  _cricketAdvanceBall(st);
+  _cricketSet(side, st);
+  _kioskSaveDebounced();
+  const bowler_id = _currentBowlerAgainst(side);
+  _kioskLogEvent(side, runs === 0 ? 'dot' : 'run', runs, bowler_id ? { bowler_id } : null);
+}
+
+function cricketWicket(side) {
+  const st = _cricketState(side);
+  st.wickets = Math.min(10, st.wickets + 1);
+  _cricketAdvanceBall(st);
+  _cricketSet(side, st);
+  _kioskSaveDebounced();
+  const bowler_id = _currentBowlerAgainst(side);
+  _kioskLogEvent(side, 'wicket', null, bowler_id ? { bowler_id } : null);
+}
+
+/**
+ * Cricket extras — adds +1 run to the batting side's total but applies
+ * different ball-counter and bowler-figures semantics:
+ *
+ *   wide / no_ball  → +1 run, NO ball advance (illegal delivery, re-bowled)
+ *   bye / leg_bye   → +1 run, +1 ball advance (legal delivery, bowler not charged)
+ *
+ * Bowling-figures rollup in _renderBowlingFigures honours this for the
+ * 'balls bowled' and 'runs conceded' columns.
+ */
+function cricketExtra(side, type) {
+  const st = _cricketState(side);
+  st.runs += 1;
+  if (type === 'bye' || type === 'leg_bye') {
+    _cricketAdvanceBall(st);
+  }
+  _cricketSet(side, st);
+  _kioskSaveDebounced();
+  const bowler_id = _currentBowlerAgainst(side);
+  _kioskLogEvent(side, type, 1, bowler_id ? { bowler_id } : null);
+}
+
+function cricketUndoBall(side) {
+  // Best-effort undo: just rewind the ball/over counter. Runs/wickets stay unless the user adjusts manually.
+  const st = _cricketState(side);
+  if (st.balls > 0) { st.balls -= 1; }
+  else if (st.overs > 0) { st.overs -= 1; st.balls = 5; }
+  _cricketSet(side, st);
+  _kioskSaveDebounced();
+}
+
+// ── Tennis widget ────────────────────────────────────────────────────────
+
+const _TENNIS_POINT_ORDER = ['0','15','30','40'];
+
+function _tennisState(side) {
+  const s = State.kioskScore[side];
+  if (s && typeof s === 'object' && 'games' in s) {
+    return {
+      sets:     s.sets || 0,
+      games:    s.games || 0,
+      points:   s.points || '0',
+      set_history: Array.isArray(s.set_history) ? s.set_history : [],
+    };
+  }
+  return { sets: 0, games: 0, points: '0', set_history: [] };
+}
+
+function _tennisStore(side, st) {
+  State.kioskScore[side] = { ...st, total: st.sets };
+}
+
+function _renderKioskTennis(m) {
+  const a = _tennisState('a'), b = _tennisState('b');
+  const setStrip = (st) => st.set_history.map((s, i) => `<span style="margin-right:4px;font-family:monospace;color:var(--gray-500)">S${i+1}: ${s[0]}-${s[1]}</span>`).join('') || '<em style="color:var(--gray-500);font-size:11px">No completed sets yet</em>';
+  const cardFor = (side, name, st) => `
+    <div class="kiosk-team">
+      <div class="kiosk-team-name">${name}</div>
+      ${_playerSelector(side)}
+      <div style="text-align:center;font-family:monospace;font-weight:800;font-size:36px;color:var(--brand);margin:6px 0">
+        <span title="Sets won">${st.sets}</span>
+        <span style="font-size:14px;color:var(--gray-500)">sets</span>
+      </div>
+      <div style="text-align:center;font-size:14px;margin-bottom:6px">
+        <strong>${st.games}</strong> games · <strong>${st.points}</strong> pts
+      </div>
+      <button class="kiosk-btn kiosk-plus" style="height:56px;font-size:18px;width:100%" onclick="tennisPoint('${side}')">+1 point</button>
+      <div style="font-size:11px;color:var(--gray-500);margin-top:6px;text-align:center">${setStrip(st)}</div>
+    </div>`;
+  return `<div class="kiosk-grid">
+    ${cardFor('a', m.team_a_name || 'Side A', a)}
+    <div class="kiosk-vs">VS</div>
+    ${cardFor('b', m.team_b_name || 'Side B', b)}
+  </div>`;
+}
+
+function _tennisAdvancePoint(side) {
+  const a = _tennisState('a'), b = _tennisState('b');
+  const winner = side === 'a' ? a : b;
+  const loser  = side === 'a' ? b : a;
+
+  // Deuce / advantage logic
+  if (winner.points === '40' && loser.points === '40') {
+    winner.points = 'AD';
+  } else if (winner.points === 'AD') {
+    return _tennisAwardGame(side);
+  } else if (loser.points === 'AD') {
+    // Loser had advantage; back to deuce
+    loser.points = '40';
+  } else if (winner.points === '40') {
+    return _tennisAwardGame(side);
+  } else {
+    // Normal progression 0 → 15 → 30 → 40
+    const idx = _TENNIS_POINT_ORDER.indexOf(winner.points);
+    winner.points = _TENNIS_POINT_ORDER[Math.min(idx + 1, _TENNIS_POINT_ORDER.length - 1)];
+  }
+  _tennisStore('a', a);
+  _tennisStore('b', b);
+}
+
+function _tennisAwardGame(side) {
+  const a = _tennisState('a'), b = _tennisState('b');
+  const winner = side === 'a' ? a : b;
+  const loser  = side === 'a' ? b : a;
+  winner.games += 1;
+  winner.points = '0';
+  loser.points  = '0';
+  // Set won at >= 6 games with a 2-game lead. (No tiebreak in MVP.)
+  if (winner.games >= 6 && winner.games - loser.games >= 2) {
+    winner.set_history = [...winner.set_history, [winner.games, loser.games]];
+    loser.set_history  = [...loser.set_history,  [loser.games,  winner.games]];
+    winner.sets += 1;
+    winner.games = 0;
+    loser.games  = 0;
+  }
+  _tennisStore('a', a);
+  _tennisStore('b', b);
+}
+
+function tennisPoint(side) {
+  _tennisAdvancePoint(side);
+  _kioskSaveDebounced();
+  _kioskLogEvent(side, 'point', 1);
+  // Re-render to refresh the displayed point/game/set numbers (cheaper than threading IDs around).
+  setTimeout(() => navigate('scoring-match', { id: State.kioskScore.matchId }), 50);
+}
+
+
+// ── Racket points widget — Badminton / Table Tennis / Pickleball ─────────
+// Score keeper drives points with +/−; "End Game" commits the current game
+// to history and starts the next. `target` is just an informational hint —
+// the score keeper decides when the game is actually over.
+
+function _racketState(side) {
+  const s = State.kioskScore[side];
+  if (s && typeof s === 'object' && 'games' in s) {
+    return {
+      games:        s.games || 0,
+      points:       s.points || 0,
+      game_history: Array.isArray(s.game_history) ? s.game_history : [],
+    };
+  }
+  return { games: 0, points: 0, game_history: [] };
+}
+
+function _racketTotal(st) {
+  // Cumulative points across all games + current (for the rating engine's POINT_RATIO rule)
+  return (st.game_history || []).reduce((acc, g) => acc + (g || 0), 0) + (st.points || 0);
+}
+
+function _racketStore(side, st) {
+  State.kioskScore[side] = { ...st, total: _racketTotal(st) };
+}
+
+function _renderKioskRacket(m, target) {
+  const a = _racketState('a'), b = _racketState('b');
+  const hist = (st) => st.game_history.map((p, i) => `<span style="margin-right:4px;font-family:monospace;color:var(--gray-500)">G${i+1}: ${p}</span>`).join('') || '<em style="color:var(--gray-500);font-size:11px">No completed games yet</em>';
+  const cardFor = (side, name, st) => `
+    <div class="kiosk-team">
+      <div class="kiosk-team-name">${name}</div>
+      ${_playerSelector(side)}
+      <div style="text-align:center;font-family:monospace;font-weight:800;font-size:30px;color:var(--brand);margin:4px 0">
+        <span>${st.games}</span>
+        <span style="font-size:14px;color:var(--gray-500)">games</span>
+      </div>
+      <div style="text-align:center;font-family:monospace;font-weight:800;font-size:48px;color:#0f172a;margin:4px 0">${st.points}</div>
+      <div class="kiosk-btns">
+        <button class="kiosk-btn kiosk-minus" onclick="racketAdjust('${side}',-1)">−</button>
+        <button class="kiosk-btn kiosk-plus"  onclick="racketAdjust('${side}',+1)">+</button>
+      </div>
+      <button class="kiosk-btn" style="height:40px;background:#fde68a;color:#78350f;border:none;font-weight:700;margin-top:6px;width:100%" onclick="racketEndGame('${side}')">End game (target ${target})</button>
+      <div style="font-size:11px;color:var(--gray-500);margin-top:6px;text-align:center">${hist(st)}</div>
+    </div>`;
+  return `<div class="kiosk-grid">
+    ${cardFor('a', m.team_a_name || 'Side A', a)}
+    <div class="kiosk-vs">VS</div>
+    ${cardFor('b', m.team_b_name || 'Side B', b)}
+  </div>`;
+}
+
+function racketAdjust(side, delta) {
+  const st = _racketState(side);
+  st.points = Math.max(0, st.points + delta);
+  _racketStore(side, st);
+  document.querySelectorAll('.kiosk-team').forEach(()=>{}); // no-op; let next render refresh
+  _kioskSaveDebounced();
+  if (delta > 0) _kioskLogEvent(side, 'point', 1);
+  setTimeout(() => navigate('scoring-match', { id: State.kioskScore.matchId }), 50);
+}
+
+function racketEndGame(side) {
+  // Commit BOTH sides' current points into history, mark the side passed in
+  // as the game winner (++ games), reset current points.
+  const a = _racketState('a'), b = _racketState('b');
+  a.game_history = [...a.game_history, a.points];
+  b.game_history = [...b.game_history, b.points];
+  if (side === 'a') a.games += 1;
+  else              b.games += 1;
+  a.points = 0;
+  b.points = 0;
+  _racketStore('a', a);
+  _racketStore('b', b);
+  _kioskSaveNow().then(() => navigate('scoring-match', { id: State.kioskScore.matchId }));
+}
+
+
+// ── Timed / round-scored widget — Swimming / Rowing / Archery ───────────
+// Swimming & Rowing: lower is better, score stored as seconds (float).
+// Archery: higher is better, score stored as points.
+// Player attribution doesn't make much sense (the player IS the side), so no
+// selector is shown — but the events feed is suppressed via the dispatcher's
+// `supportsAttribution` list.
+
+function _timedState(side) {
+  const s = State.kioskScore[side];
+  if (s != null && (typeof s === 'number')) return { value: s };
+  if (s && typeof s === 'object' && 'value' in s) return { value: s.value || 0 };
+  return { value: 0 };
+}
+
+function _renderKioskTimed(m, opts) {
+  const a = _timedState('a'), b = _timedState('b');
+  const helpText = opts.lowerIsBetter
+    ? 'Lower wins (time in seconds). Use the input to enter a result; decimals allowed.'
+    : 'Higher wins. Use the input to record points.';
+  const cardFor = (side, name, st) => `
+    <div class="kiosk-team">
+      <div class="kiosk-team-name">${name}</div>
+      <div style="text-align:center;font-family:monospace;font-weight:800;font-size:40px;color:var(--brand);margin:10px 0">
+        <span id="tm-${side}">${st.value || '—'}</span>
+        <span style="font-size:12px;color:var(--gray-500);margin-left:4px">${opts.unit}</span>
+      </div>
+      <input type="number" step="0.01" min="0" class="form-control" id="tm-input-${side}" placeholder="${opts.label}" value="${st.value || ''}" oninput="timedSet('${side}', this.value, ${opts.lowerIsBetter})"/>
+    </div>`;
+  return `<div class="kiosk-grid">
+    ${cardFor('a', m.team_a_name || 'Side A', a)}
+    <div class="kiosk-vs">VS</div>
+    ${cardFor('b', m.team_b_name || 'Side B', b)}
+  </div>
+  <div style="text-align:center;font-size:12px;color:var(--gray-500);margin-top:10px">${helpText}</div>`;
+}
+
+function timedSet(side, raw, lowerIsBetter) {
+  const v = parseFloat(raw);
+  if (isNaN(v) || v < 0) {
+    State.kioskScore[side] = null;
+  } else {
+    State.kioskScore[side] = v;
+    document.getElementById('tm-' + side).textContent = v;
+  }
+  // For lower-is-better sports, the rating engine handles inversion itself via
+  // TIME_INVERTED — so we just store the raw value. The winner is computed in
+  // _kioskWinnerId, which we override for these sports below.
+  _kioskSaveDebounced();
+  // Note: winner logic in _kioskWinnerId assumes higher = better; for timed sports
+  // we'll patch it via a sport-specific override at save time. For simplicity we
+  // recompute the winner here based on lowerIsBetter when both values present.
+  State.kioskScore._lowerIsBetter = !!lowerIsBetter;
+}
+
+
+// ── Frame / Leg / Board widget — Snooker / Billiards / Darts / Carrom ───
+// All four share the same shape (track count of units won). Each "unit" is a
+// frame / leg / board depending on the sport — passed in via `noun`.
+
+function _frameState(side) {
+  const s = State.kioskScore[side];
+  if (s && typeof s === 'object' && 'frames' in s) {
+    return { frames: s.frames || 0 };
+  }
+  return { frames: 0 };
+}
+
+function _frameStore(side, st) {
+  State.kioskScore[side] = { frames: st.frames, total: st.frames };
+}
+
+function _renderKioskFrame(m, noun) {
+  const a = _frameState('a'), b = _frameState('b');
+  const capNoun = noun.charAt(0).toUpperCase() + noun.slice(1);
+  const cardFor = (side, name, st) => `
+    <div class="kiosk-team">
+      <div class="kiosk-team-name">${name}</div>
+      ${_playerSelector(side)}
+      <div style="text-align:center;font-family:monospace;font-weight:800;font-size:64px;color:var(--brand);line-height:1;margin:10px 0">${st.frames}</div>
+      <div style="text-align:center;font-size:13px;color:var(--gray-500);margin-bottom:8px">${noun}s won</div>
+      <div class="kiosk-btns">
+        <button class="kiosk-btn kiosk-minus" onclick="frameAdjust('${side}',-1,'${noun}')">−</button>
+        <button class="kiosk-btn kiosk-plus"  onclick="frameAdjust('${side}',+1,'${noun}')">+ ${capNoun}</button>
+      </div>
+    </div>`;
+  return `<div class="kiosk-grid">
+    ${cardFor('a', m.team_a_name || 'Side A', a)}
+    <div class="kiosk-vs">VS</div>
+    ${cardFor('b', m.team_b_name || 'Side B', b)}
+  </div>`;
+}
+
+function frameAdjust(side, delta, noun) {
+  const st = _frameState(side);
+  st.frames = Math.max(0, st.frames + delta);
+  _frameStore(side, st);
+  _kioskSaveDebounced();
+  if (delta > 0) _kioskLogEvent(side, noun, 1);
+  // Re-render so the big number reflects the change. (Simpler than DOM-ID juggling.)
+  setTimeout(() => navigate('scoring-match', { id: State.kioskScore.matchId }), 50);
+}
+
+
+// ── Chess widget ─────────────────────────────────────────────────────────
+
+function _renderKioskChess(m) {
+  // score is 1 / 0.5 / 0 (per the rating engine's chess rule)
+  const cur = (val) => {
+    if (State.kioskScore.a === val && State.kioskScore.b === (1 - val)) return ' style="background:#16a34a;color:#fff;border:2px solid #15803d"';
+    return '';
+  };
+  const drawActive = State.kioskScore.a === 0.5 && State.kioskScore.b === 0.5
+    ? ' style="background:#64748b;color:#fff;border:2px solid #475569"' : '';
+  return `
+  <div style="display:flex;flex-direction:column;gap:10px;max-width:400px;margin:18px auto">
+    <button class="kiosk-btn" style="height:72px;font-size:18px;border:1px solid var(--gray-200);background:#fff"${cur(1)} onclick="chessResult(1)">
+      ♔ ${m.team_a_name||'White'} wins (1–0)
+    </button>
+    <button class="kiosk-btn" style="height:72px;font-size:18px;border:1px solid var(--gray-200);background:#fff"${drawActive} onclick="chessResult(0.5)">
+      ½ Draw (½–½)
+    </button>
+    <button class="kiosk-btn" style="height:72px;font-size:18px;border:1px solid var(--gray-200);background:#fff"${cur(0)} onclick="chessResult(0)">
+      ♚ ${m.team_b_name||'Black'} wins (0–1)
+    </button>
+  </div>`;
+}
+
+async function chessResult(scoreA) {
+  State.kioskScore.a = scoreA;
+  State.kioskScore.b = scoreA === 0.5 ? 0.5 : (1 - scoreA);
+  await _kioskSaveNow();
+  navigate('scoring-match', { id: State.kioskScore.matchId });
+}
+
+// ── Tug of War / binary widget ───────────────────────────────────────────
+
+function _renderKioskBinary(m) {
+  const aWon = State.kioskScore.a === 1 && State.kioskScore.b === 0;
+  const bWon = State.kioskScore.b === 1 && State.kioskScore.a === 0;
+  return `
+  <div style="display:flex;flex-direction:column;gap:10px;max-width:400px;margin:18px auto">
+    <button class="kiosk-btn" style="height:80px;font-size:18px;border:1px solid var(--gray-200);background:${aWon?'#16a34a':'#fff'};color:${aWon?'#fff':'inherit'}" onclick="binaryWinner('a')">
+      🏆 ${m.team_a_name||'Team A'} wins
+    </button>
+    <button class="kiosk-btn" style="height:80px;font-size:18px;border:1px solid var(--gray-200);background:${bWon?'#16a34a':'#fff'};color:${bWon?'#fff':'inherit'}" onclick="binaryWinner('b')">
+      🏆 ${m.team_b_name||'Team B'} wins
+    </button>
+  </div>`;
+}
+
+async function binaryWinner(side) {
+  State.kioskScore.a = side === 'a' ? 1 : 0;
+  State.kioskScore.b = side === 'b' ? 1 : 0;
+  await _kioskSaveNow();
+  navigate('scoring-match', { id: State.kioskScore.matchId });
+}
+
+// In-memory state for the current kiosk view (avoids re-fetching after every tap).
+// Sport-aware: a/b can be int, float (chess), or object (cricket).
+State.kioskScore = { a: 0, b: 0, matchId: null, sport: null, teamA: null, teamB: null };
+
+function _kioskWinnerId() {
+  const aNum = _scoreNum(State.kioskScore.a);
+  const bNum = _scoreNum(State.kioskScore.b);
+  if (aNum === bNum) return null;
+  const lowerIsBetter = !!State.kioskScore._lowerIsBetter;
+  if (lowerIsBetter) {
+    return aNum < bNum ? State.kioskScore.teamA : State.kioskScore.teamB;
+  }
+  return aNum > bNum ? State.kioskScore.teamA : State.kioskScore.teamB;
 }
 
 function _kioskSetStatus(msg) {
@@ -2765,19 +4080,56 @@ function _kioskSetStatus(msg) {
   if (el) el.textContent = msg;
 }
 
-async function kioskFinalize(matchId) {
-  if (!confirm('Finalize this match? Status will be set to completed and it becomes eligible for rating recalculation.')) return;
+async function _kioskSaveNow() {
+  const matchId = State.kioskScore.matchId;
+  if (!matchId) return;
+  clearTimeout(State.kioskScore._timer);
+  _kioskSetStatus('Saving…');
   try {
+    await API.patch(`/scoring/matches/${matchId}/score`, {
+      score_a: State.kioskScore.a, score_b: State.kioskScore.b,
+      winner_id: _kioskWinnerId(),
+    });
+    _kioskSetStatus('✓ Saved');
+    setTimeout(() => _kioskSetStatus(''), 1500);
+  } catch (e) { _kioskSetStatus('⚠ ' + e.message); throw e; }
+}
+
+function _kioskSaveDebounced() {
+  const matchId = State.kioskScore.matchId;
+  if (!matchId) return;
+  clearTimeout(State.kioskScore._timer);
+  _kioskSetStatus('Saving…');
+  State.kioskScore._timer = setTimeout(async () => {
+    try {
+      await API.patch(`/scoring/matches/${matchId}/score`, {
+        score_a: State.kioskScore.a,
+        score_b: State.kioskScore.b,
+        winner_id: _kioskWinnerId(),
+      });
+      _kioskSetStatus('✓ Saved');
+      setTimeout(() => _kioskSetStatus(''), 1500);
+    } catch (e) { _kioskSetStatus('⚠ ' + e.message); }
+  }, 600);
+}
+
+async function kioskFinalize(matchId) {
+  if (!confirm('Finalize this match? It will move to "awaiting confirmation" and become eligible for ratings once both captains confirm.')) return;
+  try {
+    // Flush any pending debounced save before finalizing
+    if (State.kioskScore._timer) {
+      clearTimeout(State.kioskScore._timer);
+      await API.patch(`/scoring/matches/${matchId}/score`, {
+        score_a: State.kioskScore.a, score_b: State.kioskScore.b,
+        winner_id: _kioskWinnerId(),
+      });
+    }
     await API.post(`/scoring/matches/${matchId}/finalize`);
     showAlert('Match finalized.', 'success');
-    State.kioskScore = { a: 0, b: 0, matchId: null };
+    State.kioskScore = { a: 0, b: 0, matchId: null, sport: null, teamA: null, teamB: null };
     navigate('scoring');
   } catch (e) { showAlert(e.message); }
 }
-
-// Reset kiosk cache when navigating away
-const _origNavigate2 = window.navigate;
-// (no-op safety: we don't wrap, but ensure kioskScore matchId resets when leaving the page)
 
 // ═══════════════════════════════════════════════════════════════════
 //  SHELL: Sidebar + Topbar
@@ -2790,6 +4142,8 @@ const NAV_ITEMS = [
   { id:'scoring',     label:'Scoring',     icon:'📋', show: () => isScoreCapable() },
   { id:'ratings',     label:'Ratings',     icon:'⭐' },
   { id:'tournaments', label:'Tournaments', icon:'🏆' },
+  { id:'leagues',     label:'Leagues',     icon:'🎖️' },
+  { id:'my-teams',    label:'My Teams',    icon:'🏅', show: () => isCaptainAnywhere() },
   { id:'sports',      label:'Sports',      icon:'🏅' },
   { id:'clubs',       label:'Clubs',       icon:'🏢' },
 ];
@@ -2884,6 +4238,9 @@ async function render() {
       case 'ratings':           pageHTML = await renderRatings();          break;
       case 'scoring':           pageHTML = await renderScoring();          break;
       case 'scoring-match':     pageHTML = await renderScoringMatch();     break;
+      case 'leagues':           pageHTML = await renderLeagues();          break;
+      case 'league-detail':     pageHTML = await renderLeagueDetail();     break;
+      case 'my-teams':          pageHTML = await renderMyTeams();          break;
       case 'clubs':             pageHTML = await renderClubs();            break;
       default:                  pageHTML = await renderDashboard();
     }
@@ -2899,7 +4256,15 @@ async function render() {
     if (State.currentPage === 'dashboard')           _hydrateDashboardSportSelect();
     else if (State.currentPage === 'player-detail')  loadPlayerRatings(State.pageParams?.id);
     else if (State.currentPage === 'ratings')        hydrateRatingsPage();
-    else if (State.currentPage === 'match-detail')   loadMatchAssignments(State.pageParams?.id);
+    else if (State.currentPage === 'match-detail')   {
+      loadMatchAssignments(State.pageParams?.id);
+      loadMatchConfirmations(State.pageParams?.id);
+      loadMatchBowlingFigures(State.pageParams?.id);
+    }
+    else if (State.currentPage === 'team-detail')    loadTeamCaptains(State.pageParams?.id);
+    else if (State.currentPage === 'league-detail')  loadLeagueStandings(State.pageParams?.id);
+    else if (State.currentPage === 'scoring-match')  loadKioskEvents();
+    if (State.currentPage === 'player-detail')       loadUserAssignments(State.pageParams?.id);
     if (State.currentPage !== 'scoring-match')       State.kioskScore = { a: 0, b: 0, matchId: null };
   } catch(e) { /* non-fatal */ }
   if (State.currentPage === 'change-password') {

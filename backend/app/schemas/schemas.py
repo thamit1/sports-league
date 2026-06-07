@@ -43,6 +43,8 @@ class UserOut(BaseModel):
     last_name: str
     full_name: str
     role: UserRole
+    roles: List[str] = []           # All global-scope roles (Phase 2). Includes `role` plus any extra grants.
+    captain_team_ids: List[int] = []  # Team IDs this user is a captain of (Phase 4B).
     club_id: Optional[int]
     global_player_id: Optional[str]
     avatar_url: Optional[str]
@@ -58,6 +60,25 @@ class UserOut(BaseModel):
     @property
     def full_name(self):
         return f"{self.first_name} {self.last_name}"
+
+
+class UserAssignmentCreate(BaseModel):
+    role: str
+    scope_type: str = "global"
+    scope_id: Optional[int] = None
+
+class UserAssignmentOut(BaseModel):
+    id: int
+    user_id: int
+    role: str
+    scope_type: str
+    scope_id: Optional[int] = None
+    granted_by: Optional[int] = None
+    granted_by_name: Optional[str] = None
+    granted_at: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 class UserUpdate(BaseModel):
     first_name: Optional[str] = None
@@ -339,6 +360,63 @@ class ScoreSubmit(BaseModel):
     score_a: Any
     score_b: Any
     winner_id: Optional[int] = None
+
+
+# ─── Leagues (Phase 4) ────────────────────────────────────────────────────────
+
+class LeagueCreate(BaseModel):
+    name: str
+    organizer_id: int
+    description: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    venue: Optional[str] = None
+    max_teams_per_sport: int = 16
+
+class LeagueUpdate(BaseModel):
+    name: Optional[str] = None
+    organizer_id: Optional[int] = None
+    description: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    venue: Optional[str] = None
+    max_teams_per_sport: Optional[int] = None
+    status: Optional[str] = None
+
+class LeagueOut(BaseModel):
+    id: int
+    name: str
+    organizer_id: int
+    organizer_name: Optional[str] = None
+    status: str
+    description: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    venue: Optional[str] = None
+    max_teams_per_sport: int
+    sport_count: int = 0
+    created_at: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class LeagueSportAdd(BaseModel):
+    sport_id: int
+    bracket_type: Optional[str] = "round_robin"
+
+class LeagueSportOut(BaseModel):
+    id: int
+    league_id: int
+    sport_id: int
+    sport_name: Optional[str] = None
+    sport_icon: Optional[str] = None
+    tournament_id: int
+    tournament_status: Optional[str] = None
+    registered_teams: int = 0
+
+    class Config:
+        from_attributes = True
 
 
 # ─── Ratings ──────────────────────────────────────────────────────────────────

@@ -358,7 +358,14 @@ def unassign_match(
 @router.get("/{match_id}/events")
 def get_events(match_id: int, _=Depends(get_current_user)):
     events_rows = execute_query(
-        "SELECT * FROM match_events WHERE match_id = ? ORDER BY created_at",
+        """SELECT e.*,
+                  (u.first_name || ' ' || u.last_name) AS player_name,
+                  t.name AS team_name
+             FROM match_events e
+             LEFT JOIN users u ON u.id = e.player_id
+             LEFT JOIN teams t ON t.id = e.team_id
+            WHERE e.match_id = ?
+            ORDER BY e.created_at""",
         (match_id,),
         fetch_all=True
     )
@@ -369,7 +376,9 @@ def get_events(match_id: int, _=Depends(get_current_user)):
             "event_type": e['event_type'],
             "event_data": json.loads(e['event_data']) if e['event_data'] else None,
             "team_id": e['team_id'],
+            "team_name": e.get('team_name'),
             "player_id": e['player_id'],
+            "player_name": e.get('player_name'),
             "minute": e['minute'],
             "created_at": e['created_at'],
         }

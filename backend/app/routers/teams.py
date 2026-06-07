@@ -192,6 +192,86 @@ def list_members(team_id: int, _=Depends(get_current_user)):
     ]
 
 
+@router.get("/{team_id}/captains")
+def list_captains(team_id: int, _=Depends(get_current_user)):
+    team = execute_query("SELECT id FROM teams WHERE id = ?", (team_id,), fetch_one=True)
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    return execute_query(
+        """SELECT a.id, a.user_id, a.granted_at, a.granted_by,
+                  (u.first_name || ' ' || u.last_name) AS user_name,
+                  u.email
+             FROM user_assignments a
+             LEFT JOIN users u ON u.id = a.user_id
+            WHERE a.scope_type = 'team' AND a.scope_id = ? AND a.role = 'captain'
+            ORDER BY a.granted_at""",
+        (team_id,), fetch_all=True,
+    ) or []
+
+
+@router.post("/{team_id}/captains", status_code=201)
+def add_captain(
+    team_id: int,
+    payload: dict,
+    current_user=Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.CLUB_ADMIN, UserRole.CLUB_MANAGER)),
+):
+    user_id = payload.get("user_id") if isinstance(payload, dict) else None
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id required")
+    team = execute_query("SELECT id FROM teams WHERE id = ?", (team_id,), fetch_one=True)
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    user = execute_query("SELECT id FROM users WHERE id = ? AND is_active = 1", (user_id,), fetch_one=True)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    existing = execute_query(
+        "SELECT id FROM user_assignments WHERE user_id = ? AND scope_type = 'team' AND scope_id = ? AND role = 'captain'",
+        (user_id, team_id), fetch_one=True,
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="User is already a captain of this team")
+    execute_query(
+        """INSERT INTO user_assignments (user_id, scope_type, scope_id, role, granted_by, granted_at)
+           VALUES (?, 'team', ?, 'captain', ?, CURRENT_TIMESTAMP)""",
+        (user_id, team_id, current_user.id),
+    )
+    return {"message": "Captain assigned"}
+
+
+@router.delete("/{team_id}/captains/{user_id}", status_code=204)
+def remove_captain(
+    team_id: int,
+    user_id: int,
+    _=Depends(require_roles(UserRole.SUPER_ADMIN, UserRole.CLUB_ADMIN, UserRole.CLUB_MANAGER)),
+):
+    existing = execute_query(
+        "SELECT id FROM user_assignments WHERE user_id = ? AND scope_type = 'team' AND scope_id = ? AND role = 'captain'",
+        (user_id, team_id), fetch_one=True,
+    )
+    if not existing:
+        raise HTTPException(status_code=404, detail="Not a captain of this team")
+    execute_query("DELETE FROM user_assignments WHERE id = ?", (existing['id'],))
+
+
+@router.get("/captain/mine")
+@router.get("/captain/mine/")
+def my_captain_teams(current_user=Depends(get_current_user)):
+    """Teams the current user is a captain of, with light sport/club info for the dashboard."""
+    rows = execute_query(
+        """SELECT t.*, s.name AS sport_name, s.icon AS sport_icon,
+                  c.name AS club_name, c.short_name AS club_short_name
+             FROM user_assignments a
+             JOIN teams t ON t.id = a.scope_id
+             LEFT JOIN sports s ON s.id = t.sport_id
+             LEFT JOIN clubs c ON c.id = t.club_id
+            WHERE a.user_id = ? AND a.scope_type = 'team' AND a.role = 'captain'
+              AND t.is_active = 1
+            ORDER BY t.name""",
+        (current_user.id,), fetch_all=True,
+    ) or []
+    return rows
+
+
 @router.delete("/{team_id}/members/{player_id}", status_code=204)
 def remove_member(
     team_id: int,
