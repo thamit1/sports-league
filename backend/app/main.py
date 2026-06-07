@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from app.core.config import settings
 from app.core.database import init_db
 from app.core.logging import configure_logging, logger
-from app.routers import auth, clubs, players, teams, sports, matches, tournaments, dashboard, ratings
+from app.routers import auth, clubs, players, teams, sports, matches, tournaments, dashboard, ratings, scoring
 
 configure_logging()
 logger.info("Starting Sports League Management System")
@@ -66,6 +66,7 @@ app.include_router(matches.router,     prefix="/api/matches",     tags=["Matches
 app.include_router(tournaments.router, prefix="/api/tournaments", tags=["Tournaments"])
 app.include_router(dashboard.router,   prefix="/api/dashboard",   tags=["Dashboard"])
 app.include_router(ratings.router,     prefix="/api/ratings",     tags=["Ratings"])
+app.include_router(scoring.router,     prefix="/api/scoring",     tags=["Scoring"])
 
 @app.get("/api/health", tags=["System"])
 def health():

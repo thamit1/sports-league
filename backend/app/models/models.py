@@ -8,12 +8,13 @@ import json
 # ─── Enums ────────────────────────────────────────────────────────────────────
 
 class UserRole(str, enum.Enum):
-    SUPER_ADMIN  = "super_admin"
-    CLUB_ADMIN   = "club_admin"
-    CLUB_MANAGER = "club_manager"
-    PLAYER       = "player"
-    OFFICIAL     = "official"
-    VIEWER       = "viewer"
+    SUPER_ADMIN   = "super_admin"
+    CLUB_ADMIN    = "club_admin"
+    CLUB_MANAGER  = "club_manager"
+    PLAYER        = "player"
+    OFFICIAL      = "official"
+    SCORE_KEEPER  = "score_keeper"
+    VIEWER        = "viewer"
 
 class MatchStatus(str, enum.Enum):
     SCHEDULED   = "scheduled"

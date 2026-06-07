@@ -4,7 +4,7 @@ from datetime import datetime
 from app.core.database import execute_query
 from app.core.security import get_current_user, require_roles
 from app.models.models import MatchStatus, UserRole
-from app.schemas.schemas import MatchCreate, MatchOut, MatchScoreUpdate, MatchEventCreate, MatchUpdate
+from app.schemas.schemas import MatchCreate, MatchOut, MatchScoreUpdate, MatchEventCreate, MatchUpdate, MatchAssignmentCreate, MatchAssignmentOut
 import json
 
 router = APIRouter()
@@ -286,6 +286,73 @@ def add_event(
     )
 
     return {"message": "Event recorded", "event_id": event_id}
+
+
+@router.get("/{match_id}/assignments", response_model=List[MatchAssignmentOut])
+def list_assignments(match_id: int, _=Depends(get_current_user)):
+    rows = execute_query(
+        """SELECT a.*, (u.first_name || ' ' || u.last_name) AS user_name
+             FROM match_assignments a
+             LEFT JOIN users u ON u.id = a.user_id
+            WHERE a.match_id = ?
+            ORDER BY a.role, a.id""",
+        (match_id,), fetch_all=True,
+    ) or []
+    return rows
+
+
+@router.post("/{match_id}/assignments", response_model=MatchAssignmentOut, status_code=201)
+def assign_match(
+    match_id: int,
+    payload: MatchAssignmentCreate,
+    current_user=Depends(require_roles(
+        UserRole.SUPER_ADMIN, UserRole.CLUB_ADMIN, UserRole.CLUB_MANAGER,
+    )),
+):
+    match = execute_query("SELECT id FROM matches WHERE id = ?", (match_id,), fetch_one=True)
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+    user = execute_query("SELECT id, first_name, last_name FROM users WHERE id = ? AND is_active = 1",
+                         (payload.user_id,), fetch_one=True)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    try:
+        aid = execute_query(
+            """INSERT INTO match_assignments (match_id, user_id, role, assigned_by, assigned_at)
+               VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)""",
+            (match_id, payload.user_id, payload.role, current_user.id),
+            return_lastid=True,
+        )
+    except Exception as exc:
+        # UNIQUE(match_id, user_id, role) violation = already assigned
+        raise HTTPException(status_code=409, detail=f"Already assigned: {exc}")
+    return execute_query(
+        """SELECT a.*, (u.first_name || ' ' || u.last_name) AS user_name
+             FROM match_assignments a LEFT JOIN users u ON u.id = a.user_id
+            WHERE a.id = ?""",
+        (aid,), fetch_one=True,
+    )
+
+
+@router.delete("/{match_id}/assignments/{user_id}", status_code=204)
+def unassign_match(
+    match_id: int,
+    user_id: int,
+    role: str = Query("score_keeper"),
+    _=Depends(require_roles(
+        UserRole.SUPER_ADMIN, UserRole.CLUB_ADMIN, UserRole.CLUB_MANAGER,
+    )),
+):
+    existing = execute_query(
+        "SELECT id FROM match_assignments WHERE match_id = ? AND user_id = ? AND role = ?",
+        (match_id, user_id, role), fetch_one=True,
+    )
+    if not existing:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    execute_query(
+        "DELETE FROM match_assignments WHERE match_id = ? AND user_id = ? AND role = ?",
+        (match_id, user_id, role),
+    )
 
 
 @router.get("/{match_id}/events")

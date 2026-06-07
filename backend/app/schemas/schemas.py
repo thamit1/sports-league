@@ -299,6 +299,48 @@ class MatchOut(BaseModel):
         from_attributes = True
 
 
+# ─── Match Assignments / Scoring ──────────────────────────────────────────────
+
+class MatchAssignmentCreate(BaseModel):
+    user_id: int
+    role: str = "score_keeper"
+
+class MatchAssignmentOut(BaseModel):
+    id: int
+    match_id: int
+    user_id: int
+    user_name: Optional[str] = None
+    role: str
+    assigned_by: Optional[int] = None
+    assigned_at: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ScoringMatchOut(BaseModel):
+    id: int
+    sport_id: int
+    sport_name: Optional[str] = None
+    sport_icon: Optional[str] = None
+    team_a_id: int
+    team_a_name: Optional[str] = None
+    team_b_id: int
+    team_b_name: Optional[str] = None
+    status: str
+    scheduled_at: Optional[str] = None
+    venue: Optional[str] = None
+    score_a: Any = None
+    score_b: Any = None
+    winner_id: Optional[int] = None
+
+
+class ScoreSubmit(BaseModel):
+    score_a: Any
+    score_b: Any
+    winner_id: Optional[int] = None
+
+
 # ─── Ratings ──────────────────────────────────────────────────────────────────
 
 class SportRatingConfigCreate(BaseModel):

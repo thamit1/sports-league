@@ -109,6 +109,33 @@ input[type="color"].form-control{padding:2px;height:38px;cursor:pointer;backgrou
 
 .spinner-sm{width:14px;height:14px;border:2px solid var(--gray-200);border-top-color:var(--brand);border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Scoring (mobile-first kiosk) ── */
+.scoring-card{background:#fff;border:1px solid var(--gray-200);border-radius:12px;padding:14px;cursor:pointer;transition:box-shadow .15s,transform .05s}
+.scoring-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.08)}
+.scoring-card:active{transform:scale(.99)}
+
+.kiosk-grid{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center;margin-top:14px}
+.kiosk-team{background:#fff;border:1px solid var(--gray-200);border-radius:16px;padding:18px 12px;text-align:center}
+.kiosk-team-name{font-weight:700;font-size:15px;margin-bottom:8px;min-height:38px;display:flex;align-items:center;justify-content:center}
+.kiosk-score{font-size:64px;font-weight:900;line-height:1;font-family:'SF Mono','Consolas',monospace;color:var(--brand);margin:8px 0}
+.kiosk-btns{display:flex;gap:8px;justify-content:center;margin-top:6px}
+.kiosk-btn{flex:1;max-width:80px;height:56px;border-radius:12px;border:none;font-size:28px;font-weight:800;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.kiosk-btn:active{transform:scale(.96)}
+.kiosk-plus{background:#16a34a;color:#fff}
+.kiosk-minus{background:#e5e7eb;color:#475569}
+.kiosk-vs{font-weight:800;font-size:14px;color:var(--gray-500);padding:0 4px}
+
+@media (max-width: 640px){
+  .kiosk-grid{grid-template-columns:1fr;gap:8px}
+  .kiosk-vs{padding:4px 0}
+  .kiosk-score{font-size:72px}
+  .kiosk-btn{height:64px;font-size:32px;max-width:none}
+}
+
+/* Assignment chips */
+.assign-chip{display:inline-flex;align-items:center;gap:6px;background:#f1f5f9;border:1px solid var(--gray-200);border-radius:999px;padding:4px 10px;font-size:12px;margin:2px}
+.assign-chip button{background:none;border:none;color:#dc2626;cursor:pointer;font-weight:700;padding:0;font-size:14px;line-height:1}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .form-error{font-size:12px;color:var(--danger);margin-top:4px}
 
@@ -316,6 +343,11 @@ function isAdmin() {
 
 function isSuperAdmin() {
   return (State.user?.role || '').toLowerCase() === 'super_admin';
+}
+
+function isScoreCapable() {
+  // Roles that can see the Scoring page: dedicated score-keeper + anyone who could already score matches.
+  return ['super_admin','club_admin','club_manager','official','score_keeper'].includes((State.user?.role || '').toLowerCase());
 }
 
 function showAlert(msg, type = 'error') {
@@ -816,7 +848,7 @@ async function renderPlayerDetail() {
     <div class="form-group">
       <label class="form-label">Role</label>
       <select class="form-control" id="admin-role">
-        ${['viewer','player','official','club_manager','club_admin','super_admin'].map(role => `
+        ${['viewer','player','official','score_keeper','club_manager','club_admin','super_admin'].map(role => `
           <option value="${role}" ${player.role===role ? 'selected':''}>${role.replace(/_/g,' ')}</option>`).join('')}
       </select>
     </div>
@@ -1456,6 +1488,31 @@ async function renderMatchDetail() {
       <button class="btn btn-primary" onclick="logEvent(${id})">+ Log Event</button>
     </div>
   </div>
+  ${isAdmin() || (State.user?.role||'').toLowerCase()==='club_manager' ? `
+  <div class="card" style="margin-top:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div style="font-weight:700">📋 Score Keepers & Officials</div>
+      <button class="btn btn-secondary btn-sm" onclick="openAssignModal(${id})">+ Assign</button>
+    </div>
+    <div id="assignments-list" style="min-height:30px;color:#94a3b8;font-size:13px">Loading…</div>
+  </div>
+  ${modalHTML('assign-modal','Assign to Match',`
+    <input type="hidden" id="assign-match-id" value="${id}"/>
+    <div class="form-group"><label class="form-label">User</label>
+      <input class="form-control" id="assign-search" placeholder="Search by name or email…" oninput="assignSearchDebounced(this.value)"/>
+      <div id="assign-results" style="margin-top:6px;max-height:180px;overflow-y:auto"></div>
+      <input type="hidden" id="assign-user-id"/>
+      <div id="assign-selected" style="margin-top:6px;font-size:12px;color:var(--gray-500)"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Role</label>
+      <select class="form-control" id="assign-role">
+        <option value="score_keeper">Score Keeper</option>
+        <option value="referee">Referee</option>
+      </select>
+    </div>`,
+    `<button class="btn btn-secondary" onclick="closeModal('assign-modal')">Cancel</button>
+     <button class="btn btn-primary" onclick="submitAssign()">Assign</button>`
+  )}` : ''}
   <div class="card" style="margin-top:20px;padding:0;overflow:hidden">
     <div style="padding:16px 20px;border-bottom:1px solid var(--gray-100);font-weight:700">📋 Match Events (${events.length})</div>
     <div class="table-wrap">
@@ -1471,6 +1528,72 @@ async function renderMatchDetail() {
       </tbody></table>
     </div>
   </div>`;
+}
+
+async function loadMatchAssignments(matchId) {
+  const el = document.getElementById('assignments-list');
+  if (!el || !matchId) return;
+  try {
+    const rows = await API.get(`/matches/${matchId}/assignments`);
+    if (!rows.length) { el.innerHTML = '<em>No one assigned yet.</em>'; return; }
+    el.innerHTML = rows.map(a => `
+      <span class="assign-chip">
+        <strong>${a.user_name||'—'}</strong>
+        <span style="color:var(--gray-500)">· ${a.role.replace('_',' ')}</span>
+        <button title="Remove" onclick="removeAssignment(${matchId},${a.user_id},'${a.role}')">✕</button>
+      </span>`).join('');
+  } catch (e) { el.innerHTML = `<span style="color:#dc2626">${e.message}</span>`; }
+}
+
+let _assignSearchTimer = null;
+function assignSearchDebounced(q) {
+  clearTimeout(_assignSearchTimer);
+  _assignSearchTimer = setTimeout(() => doAssignSearch(q), 250);
+}
+async function doAssignSearch(q) {
+  const results = document.getElementById('assign-results');
+  if (!q || q.length < 2) { results.innerHTML = ''; return; }
+  try {
+    const players = await API.get('/players/', { search: q, limit: 8 });
+    if (!players.length) { results.innerHTML = '<div style="color:#94a3b8;padding:4px">No matches.</div>'; return; }
+    results.innerHTML = players.map(p => `
+      <div style="padding:6px 8px;border-radius:6px;cursor:pointer;font-size:13px" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''" onclick="pickAssignUser(${p.id},'${(p.full_name||'').replace(/'/g,'')}')">
+        <strong>${p.full_name||'—'}</strong> <span style="color:var(--gray-500);font-size:11px">${p.email||''} · ${(p.role||'').replace(/_/g,' ')}</span>
+      </div>`).join('');
+  } catch (e) { results.innerHTML = `<div style="color:#dc2626">${e.message}</div>`; }
+}
+function pickAssignUser(id, name) {
+  document.getElementById('assign-user-id').value = id;
+  document.getElementById('assign-selected').textContent = 'Selected: ' + name;
+  document.getElementById('assign-results').innerHTML = '';
+}
+function openAssignModal(matchId) {
+  document.getElementById('assign-match-id').value = matchId;
+  document.getElementById('assign-user-id').value = '';
+  document.getElementById('assign-search').value = '';
+  document.getElementById('assign-selected').textContent = '';
+  document.getElementById('assign-results').innerHTML = '';
+  document.getElementById('assign-role').value = 'score_keeper';
+  openModal('assign-modal');
+}
+async function submitAssign() {
+  const matchId = document.getElementById('assign-match-id').value;
+  const userId  = document.getElementById('assign-user-id').value;
+  const role    = document.getElementById('assign-role').value;
+  if (!userId) { showAlert('Pick a user first'); return; }
+  try {
+    await API.post(`/matches/${matchId}/assignments`, { user_id: parseInt(userId), role });
+    closeModal('assign-modal');
+    showAlert('Assigned.', 'success');
+    loadMatchAssignments(matchId);
+  } catch (e) { showAlert(e.message); }
+}
+async function removeAssignment(matchId, userId, role) {
+  if (!confirm('Remove this assignment?')) return;
+  try {
+    await API.delete(`/matches/${matchId}/assignments/${userId}?role=${encodeURIComponent(role)}`);
+    loadMatchAssignments(matchId);
+  } catch (e) { showAlert(e.message); }
 }
 
 async function updateScore(matchId, taId, tbId) {
@@ -2479,6 +2602,184 @@ async function confirmRecalculation() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+//  SCORING PAGE (mobile-friendly score entry for score keepers)
+// ═══════════════════════════════════════════════════════════════════
+
+function _scoreNum(v) {
+  if (v == null) return 0;
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string') { const n = parseInt(v); return isNaN(n) ? 0 : n; }
+  if (typeof v === 'object') return v.total ?? v.points ?? v.value ?? 0;
+  return 0;
+}
+
+async function renderScoring() {
+  if (!isScoreCapable()) return '<div class="alert alert-error">You don\'t have permission to score matches.</div>';
+
+  const filter = State.pageParams?.status || 'active';
+  let queue = [];
+  try {
+    queue = await API.get('/scoring/queue', filter === 'active' ? null : { status: filter });
+  } catch (e) { return `<div class="alert alert-error">${e.message}</div>`; }
+
+  const tabs = [
+    { id: 'active',    label: 'Active' },
+    { id: 'completed', label: 'Completed' },
+    { id: 'all',       label: 'All' },
+  ];
+
+  const groups = { in_progress: [], scheduled: [], other: [] };
+  queue.forEach(m => {
+    if (m.status === 'in_progress')      groups.in_progress.push(m);
+    else if (m.status === 'scheduled')   groups.scheduled.push(m);
+    else                                 groups.other.push(m);
+  });
+
+  const renderCard = m => `
+    <div class="scoring-card" onclick="navigate('scoring-match',{id:${m.id}})">
+      <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:11px;color:var(--gray-500);text-transform:uppercase;letter-spacing:.04em">${m.sport_icon||sportIcon(m.sport_name)} ${m.sport_name||'—'}</div>
+          <div style="font-weight:700;font-size:16px;margin:4px 0">${m.team_a_name||'?'} <span style="color:var(--gray-500);font-weight:400">vs</span> ${m.team_b_name||'?'}</div>
+          <div style="font-size:12px;color:var(--gray-500)">${m.venue||'No venue'} · ${fmtDateTime(m.scheduled_at)}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-family:monospace;font-weight:800;font-size:24px;line-height:1">${_scoreNum(m.score_a)} : ${_scoreNum(m.score_b)}</div>
+          <div style="margin-top:6px">${badge(m.status)}</div>
+        </div>
+      </div>
+    </div>`;
+
+  const sectionHTML = (title, list) => list.length ? `
+    <div style="margin-bottom:18px">
+      <div style="font-size:12px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">${title} · ${list.length}</div>
+      <div style="display:flex;flex-direction:column;gap:8px">${list.map(renderCard).join('')}</div>
+    </div>` : '';
+
+  const empty = queue.length === 0
+    ? '<div class="empty-state" style="padding:40px 16px;text-align:center;color:#94a3b8">No matches to score.<div style="font-size:12px;margin-top:8px">Score keepers see matches a club admin has assigned to them.</div></div>'
+    : '';
+
+  return `
+  <div class="page-header">
+    <div><div class="page-title">📋 Score Entry</div><div class="page-sub">${queue.length} match${queue.length===1?'':'es'}</div></div>
+  </div>
+  <div class="tabs" style="margin-bottom:14px">
+    ${tabs.map(t => `<button class="tab ${t.id===filter?'active':''}" onclick="navigate('scoring',{status:'${t.id}'})">${t.label}</button>`).join('')}
+  </div>
+  ${empty || (sectionHTML('🔴 In progress', groups.in_progress) + sectionHTML('⏳ Scheduled', groups.scheduled) + sectionHTML('Other', groups.other))}`;
+}
+
+
+// ── Kiosk-style single-match scoring view ──────────────────────────────
+
+async function renderScoringMatch() {
+  const id = State.pageParams?.id;
+  if (!id) return '<div class="alert alert-error">No match selected</div>';
+
+  let m;
+  try { m = await API.get(`/scoring/matches/${id}`); }
+  catch (e) { return `<div class="alert alert-error">${e.message}</div>`; }
+
+  const sa = _scoreNum(m.score_a);
+  const sb = _scoreNum(m.score_b);
+  const canFinalize = sa !== 0 || sb !== 0;  // soft guard; backend enforces real check
+
+  return `
+  <div style="margin-bottom:14px">
+    <button class="btn btn-secondary btn-sm" onclick="navigate('scoring')">← Back</button>
+  </div>
+  <div class="card" style="text-align:center">
+    <div style="font-size:13px;color:var(--gray-500)">${m.sport_icon||sportIcon(m.sport_name)} ${m.sport_name||'—'} · ${m.venue||'No venue'}</div>
+    <div style="margin-top:4px">${badge(m.status)}</div>
+  </div>
+  <div class="kiosk-grid">
+    <div class="kiosk-team">
+      <div class="kiosk-team-name">${m.team_a_name||'Team A'}</div>
+      <div class="kiosk-score" id="ks-a">${sa}</div>
+      <div class="kiosk-btns">
+        <button class="kiosk-btn kiosk-minus" onclick="kioskAdjust(${id},'a',-1)">−</button>
+        <button class="kiosk-btn kiosk-plus"  onclick="kioskAdjust(${id},'a',+1)">+</button>
+      </div>
+    </div>
+    <div class="kiosk-vs">VS</div>
+    <div class="kiosk-team">
+      <div class="kiosk-team-name">${m.team_b_name||'Team B'}</div>
+      <div class="kiosk-score" id="ks-b">${sb}</div>
+      <div class="kiosk-btns">
+        <button class="kiosk-btn kiosk-minus" onclick="kioskAdjust(${id},'b',-1)">−</button>
+        <button class="kiosk-btn kiosk-plus"  onclick="kioskAdjust(${id},'b',+1)">+</button>
+      </div>
+    </div>
+  </div>
+  <div id="kiosk-status" style="text-align:center;font-size:12px;color:var(--gray-500);margin:8px 0;min-height:16px"></div>
+  <div style="display:flex;gap:8px;justify-content:center;margin-top:18px">
+    ${m.status !== 'completed'
+      ? `<button class="btn btn-success" style="padding:14px 28px;font-size:15px" onclick="kioskFinalize(${id})">✅ Finalize Match</button>`
+      : `<div style="color:var(--gray-500);font-size:13px">Match finalized.</div>`}
+  </div>`;
+}
+
+// In-memory state for the current kiosk view (avoids re-fetching after every tap).
+State.kioskScore = { a: 0, b: 0, matchId: null };
+
+async function _kioskInitState(matchId) {
+  if (State.kioskScore.matchId === matchId) return;
+  State.kioskScore.matchId = matchId;
+  State.kioskScore.a = parseInt(document.getElementById('ks-a').textContent) || 0;
+  State.kioskScore.b = parseInt(document.getElementById('ks-b').textContent) || 0;
+}
+
+async function kioskAdjust(matchId, side, delta) {
+  await _kioskInitState(matchId);
+  State.kioskScore[side] = Math.max(0, State.kioskScore[side] + delta);
+  document.getElementById('ks-' + side).textContent = State.kioskScore[side];
+
+  // Debounce server save
+  clearTimeout(State.kioskScore._timer);
+  _kioskSetStatus('Saving…');
+  State.kioskScore._timer = setTimeout(async () => {
+    try {
+      const sa = State.kioskScore.a, sb = State.kioskScore.b;
+      const winner_id = await _kioskWinnerId(matchId, sa, sb);
+      await API.patch(`/scoring/matches/${matchId}/score`, { score_a: sa, score_b: sb, winner_id });
+      _kioskSetStatus('✓ Saved');
+      setTimeout(() => _kioskSetStatus(''), 1500);
+    } catch (e) { _kioskSetStatus('⚠ ' + e.message); }
+  }, 600);
+}
+
+async function _kioskWinnerId(matchId, sa, sb) {
+  if (sa === sb) return null;
+  // Match payload from the current fetch is gone; pull a tiny lookup instead.
+  // Cheaper: cache the team ids on the page once we render.
+  if (!State.kioskScore._teamIds) {
+    const m = await API.get(`/scoring/matches/${matchId}`);
+    State.kioskScore._teamIds = { a: m.team_a_id, b: m.team_b_id };
+  }
+  return sa > sb ? State.kioskScore._teamIds.a : State.kioskScore._teamIds.b;
+}
+
+function _kioskSetStatus(msg) {
+  const el = document.getElementById('kiosk-status');
+  if (el) el.textContent = msg;
+}
+
+async function kioskFinalize(matchId) {
+  if (!confirm('Finalize this match? Status will be set to completed and it becomes eligible for rating recalculation.')) return;
+  try {
+    await API.post(`/scoring/matches/${matchId}/finalize`);
+    showAlert('Match finalized.', 'success');
+    State.kioskScore = { a: 0, b: 0, matchId: null };
+    navigate('scoring');
+  } catch (e) { showAlert(e.message); }
+}
+
+// Reset kiosk cache when navigating away
+const _origNavigate2 = window.navigate;
+// (no-op safety: we don't wrap, but ensure kioskScore matchId resets when leaving the page)
+
+// ═══════════════════════════════════════════════════════════════════
 //  SHELL: Sidebar + Topbar
 // ═══════════════════════════════════════════════════════════════════
 const NAV_ITEMS = [
@@ -2486,6 +2787,7 @@ const NAV_ITEMS = [
   { id:'players',     label:'Players',     icon:'👤' },
   { id:'teams',       label:'Teams',       icon:'🛡️' },
   { id:'matches',     label:'Matches',     icon:'⚔️' },
+  { id:'scoring',     label:'Scoring',     icon:'📋', show: () => isScoreCapable() },
   { id:'ratings',     label:'Ratings',     icon:'⭐' },
   { id:'tournaments', label:'Tournaments', icon:'🏆' },
   { id:'sports',      label:'Sports',      icon:'🏅' },
@@ -2501,7 +2803,7 @@ function renderShell(innerHTML) {
       <div><h1>SLMS</h1><p>Sports League Mgmt</p></div>
     </div>
     <nav class="nav">
-      ${NAV_ITEMS.map(n => `
+      ${NAV_ITEMS.filter(n => !n.show || n.show()).map(n => `
       <button class="nav-item ${State.currentPage.startsWith(n.id) ? 'active' : ''}"
         onclick="navigate('${n.id}')">
         <span class="nav-icon">${n.icon}</span>${n.label}
@@ -2580,6 +2882,8 @@ async function render() {
       case 'tournament-detail': pageHTML = await renderTournamentDetail(); break;
       case 'sports':            pageHTML = await renderSports();           break;
       case 'ratings':           pageHTML = await renderRatings();          break;
+      case 'scoring':           pageHTML = await renderScoring();          break;
+      case 'scoring-match':     pageHTML = await renderScoringMatch();     break;
       case 'clubs':             pageHTML = await renderClubs();            break;
       default:                  pageHTML = await renderDashboard();
     }
@@ -2595,6 +2899,8 @@ async function render() {
     if (State.currentPage === 'dashboard')           _hydrateDashboardSportSelect();
     else if (State.currentPage === 'player-detail')  loadPlayerRatings(State.pageParams?.id);
     else if (State.currentPage === 'ratings')        hydrateRatingsPage();
+    else if (State.currentPage === 'match-detail')   loadMatchAssignments(State.pageParams?.id);
+    if (State.currentPage !== 'scoring-match')       State.kioskScore = { a: 0, b: 0, matchId: null };
   } catch(e) { /* non-fatal */ }
   if (State.currentPage === 'change-password') {
     bindChangePassword();

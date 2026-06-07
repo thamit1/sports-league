@@ -592,6 +592,24 @@ def init_db():
                 )
             """)
 
+        # ── Match assignments (score keepers, extra referees, etc.) ──
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS match_assignments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                match_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                role TEXT NOT NULL DEFAULT 'score_keeper',
+                assigned_by INTEGER,
+                assigned_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(match_id, user_id, role),
+                FOREIGN KEY (match_id) REFERENCES matches(id),
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (assigned_by) REFERENCES users(id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_match_assignments_user ON match_assignments(user_id, role)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_match_assignments_match ON match_assignments(match_id)")
+
         # ── Ratings: per-sport configuration ──────────────────────────
         if settings.DB_TYPE == "mysql":
             cursor.execute("""
