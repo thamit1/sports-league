@@ -19,7 +19,10 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-01*.txt
+01-*.*
+backups/
+.claude/
+logs/
 
 # Virtual environments
 venv/
